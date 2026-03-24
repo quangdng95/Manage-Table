@@ -1,0 +1,378 @@
+// ── Full EN / VI translation dictionary ──────────────────────
+
+export type Lang = "en" | "vi";
+
+const T = {
+  en: {
+    // ── Top nav ──────────────────────────────────────────────
+    nav: {
+      bookings: "Bookings",
+      crm:      "CRM",
+      archive:  "Archive",
+    },
+
+    // ── Header bar ───────────────────────────────────────────
+    header: {
+      newBooking: "New booking",
+      walkIn:     "Walk in",
+      live:       "live",
+      dateLabel:  "Monday, March 23, 2026",
+    },
+
+    // ── View controls ────────────────────────────────────────
+    views: {
+      show:      "Show:",
+      time:      "Time:",
+      diagram:   "Diagram",
+      list:      "List",
+      tablePlan: "Table plan",
+    },
+
+    // ── Time periods ─────────────────────────────────────────
+    periods: {
+      all:     "All",
+      morning: "Morning",
+      lunch:   "Lunch",
+      evening: "Evening",
+    },
+
+    // ── Archive placeholder ───────────────────────────────────
+    archive: {
+      title:    "Archive",
+      subtitle: "Past bookings and history coming soon",
+    },
+
+    // ── Sidebar ───────────────────────────────────────────────
+    sidebar: {
+      today:          "Today",
+      month:          "March",
+      bookingOpen:    "Booking open",
+      bookings:       "Bookings",
+      remainingToday: "Remaining today",
+      morning:        "Morning",
+      lunch:          "Lunch",
+      evening:        "Evening",
+      guests:         "Guests",
+      language:       "Language",
+      langCode:       "EN",
+      langFull:       "English",
+      dayLabels:      ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as string[],
+      eventNight:     "Chef's Table Wednesday",
+      eventNightDesc: "Weekly recurring special event · fixed menu · fully pre-booked",
+    },
+
+    // ── Timeline ─────────────────────────────────────────────
+    timeline: {
+      searchPlaceholder: "Search guest name in timeline…",
+      matchSuffix:       "match",
+      matchSuffixPlural: "matches",
+      noResults:         "No results",
+      nowLabel:          "Now",
+      clickHint:         "Click empty cell to add booking",
+      legendMorning:     "Morning",
+      legendLunch:       "Lunch",
+      legendEvening:     "Evening",
+      legendNoShow:      "No-show",
+      completed:         "completed",
+      serviceLabel: {
+        Morning: "Morning service · 07:00 – 12:00 · 3× zoom",
+        Lunch:   "Lunch service · 12:00 – 17:00 · 3× zoom",
+        Evening: "Evening service · 17:00 – 22:00 · 3× zoom",
+      },
+      // Section names
+      sections: {
+        "Restaurant":  "Restaurant",
+        "First floor": "First floor",
+        "Terrace":     "Terrace",
+        "Bar":         "Bar",
+      },
+    },
+
+    // ── Slot popup ───────────────────────────────────────────
+    slot: {
+      walkIn:              "Walk-in",
+      walkInNowDesc:       "Guest is here — seat immediately",
+      walkInFutureDesc:    "Unexpected guest, seat now",
+      newBooking:          "New booking",
+      newBookingFutureDesc:"Schedule for",
+      newBookingNowDesc:   "Log a same-time reservation",
+      pastNote:            "New bookings can't be made for past times. Walk-in is the only option.",
+      badgePast:           "Past",
+      badgeNow:            "Now",
+      badgePrimary:        "Primary",
+      badgePlan:           "Plan",
+    },
+
+    // ── List view ─────────────────────────────────────────────
+    list: {
+      searchPlaceholder: "Search guest, tag…",
+      statBookings:      "Bookings",
+      statGuests:        "Guests",
+      statNoShows:       "No-shows",
+      statSections:      "Sections",
+      avgSuffix:         "avg",
+      perTable:          "/table",
+      rateLabel:         "% rate",
+      colGuest:          "Guest",
+      colSection:        "Section",
+      colTime:           "Time",
+      colPax:            "Pax",
+      colStatus:         "Status",
+      colActions:        "Actions",
+      doneBadge:         "Done",
+      tableLabel:        "Table",
+      minSuffix:         "min",
+      guestSuffix:       "guests",
+      noBookings:        "No bookings found",
+      noBookingsSub:     "Try adjusting your search or filters",
+      // Period labels (mirrors PERIOD_THEMES but translated)
+      periodLabel: {
+        All:     "All Day",
+        Morning: "Morning Service",
+        Lunch:   "Lunch Service",
+        Evening: "Evening Service",
+      },
+      periodSublabel: {
+        All:     "Full service · 07:00 — 22:00",
+        Morning: "Breakfast & brunch · 07:00 — 12:00",
+        Lunch:   "Midday dining · 12:00 — 16:00",
+        Evening: "Dinner service · 17:00 — 22:00",
+      },
+      // Status filter options (display labels)
+      statusOptions: ["All", "Seated", "Arrived", "Confirmed", "Waiting", "No-show"],
+      sectionOptions: ["All", "Restaurant", "First floor", "Terrace", "Bar"],
+    },
+
+    // ── Status labels (shared) ────────────────────────────────
+    status: {
+      seated:    "Seated",
+      arrived:   "Arrived",
+      confirmed: "Confirmed",
+      waiting:   "Waiting",
+      noshow:    "No-show",
+      cancelled: "Cancelled",
+    },
+
+    // ── Booking detail modal ──────────────────────────────────
+    modal: {
+      tabOverview:   "Overview",
+      tabMessages:   "Messages",
+      tabDocuments:  "Documents",
+      tabEdit:       "Edit booking",
+      dateLabel:     "Mon, Mar 23, 2026",
+      minSuffix:     "min",
+      tableLabel:    "Table",
+      guestSuffix:   "guests",
+      visitsSuffix:  "visits",
+      totalLabel:    "total",
+      crmProfile:    "CRM profile",
+      bookingTags:   "Booking tags",
+      tagsHint:      "Tags tell staff what's needed for this booking",
+      iconsTitle:    "What do the icons mean?",
+      iconSettings:  "Settings (⚙️)",
+      iconSettingsDesc: "Edit this booking — change date, time, table, guest count, or status.",
+      iconMessages:  "Messages (💬)",
+      iconMessagesDesc: "Guest note from booking time, plus all internal staff notes.",
+      iconDocuments: "Documents (📄)",
+      iconDocumentsDesc: "Attached files — menus, deposit receipts, booking confirmations.",
+      iconGuests:    "Guest count (👥)",
+      iconGuestsDesc: "Total covers for kitchen and table prep.",
+      updateStatus:  "Update status",
+      guestNote:     "Guest note (at booking time)",
+      bookingNote:   "Booking note",
+      staffNotes:    "Staff notes",
+      noMessages:    "No messages for this booking",
+      messagesInfo:  "Messages contains the note the guest left when making their booking, plus any internal staff notes.",
+      addNoteTitle:  "Add staff note",
+      addNotePlaceholder: "Write an internal note about this booking…",
+      addNoteBtn:    "Add note",
+      docsInfo:      "Documents are files attached to this booking — pre-ordered menus (🍽️), deposit receipts (🧾), and booking forms (📋).",
+      noDocs:        "No documents attached",
+      noDocsSub:     "Upload menus, receipts or forms below",
+      attachFile:    "Attach a file",
+      editInfo:      "Changes here update this booking only. The guest will receive an updated confirmation by email if you choose to notify them.",
+      today:         "Today",
+    },
+  },
+
+  vi: {
+    nav: {
+      bookings: "Đặt Bàn",
+      crm:      "Khách Hàng",
+      archive:  "Lưu Trữ",
+    },
+
+    header: {
+      newBooking: "Đặt bàn mới",
+      walkIn:     "Khách vãng lai",
+      live:       "trực tiếp",
+      dateLabel:  "Thứ Hai, 23 Tháng 3, 2026",
+    },
+
+    views: {
+      show:      "Hiển thị:",
+      time:      "Thời gian:",
+      diagram:   "Lịch biểu",
+      list:      "Danh sách",
+      tablePlan: "Sơ đồ bàn",
+    },
+
+    periods: {
+      all:     "Tất cả",
+      morning: "Sáng",
+      lunch:   "Trưa",
+      evening: "Tối",
+    },
+
+    archive: {
+      title:    "Lưu Trữ",
+      subtitle: "Đặt bàn cũ và lịch sử sẽ sớm ra mắt",
+    },
+
+    sidebar: {
+      today:          "Hôm nay",
+      month:          "Tháng 3",
+      bookingOpen:    "Đang nhận đặt bàn",
+      bookings:       "Đặt bàn",
+      remainingToday: "Còn lại hôm nay",
+      morning:        "Sáng",
+      lunch:          "Trưa",
+      evening:        "Tối",
+      guests:         "Khách",
+      language:       "Ngôn ngữ",
+      langCode:       "VI",
+      langFull:       "Tiếng Việt",
+      dayLabels:      ["T2", "T3", "T4", "T5", "T6", "T7", "CN"] as string[],
+      eventNight:     "Thứ Tư Bàn Đặc Biệt",
+      eventNightDesc: "Sự kiện hàng tuần · thực đơn cố định · đã đặt hết chỗ",
+    },
+
+    timeline: {
+      searchPlaceholder: "Tìm tên khách trong lịch…",
+      matchSuffix:       "kết quả",
+      matchSuffixPlural: "kết quả",
+      noResults:         "Không tìm thấy",
+      nowLabel:          "Hiện tại",
+      clickHint:         "Nhấp ô trống để thêm đặt bàn",
+      legendMorning:     "Sáng",
+      legendLunch:       "Trưa",
+      legendEvening:     "Tối",
+      legendNoShow:      "Vắng mặt",
+      completed:         "hoàn thành",
+      serviceLabel: {
+        Morning: "Ca sáng · 07:00 – 12:00 · Phóng to 3×",
+        Lunch:   "Ca trưa · 12:00 – 17:00 · Phóng to 3×",
+        Evening: "Ca tối · 17:00 – 22:00 · Phóng to 3×",
+      },
+      sections: {
+        "Restaurant":  "Nhà Hàng",
+        "First floor": "Tầng Một",
+        "Terrace":     "Sân Thượng",
+        "Bar":         "Quầy Bar",
+      },
+    },
+
+    slot: {
+      walkIn:              "Khách vãng lai",
+      walkInNowDesc:       "Khách đã đến — xếp chỗ ngay",
+      walkInFutureDesc:    "Khách ngoài dự kiến, xếp chỗ ngay",
+      newBooking:          "Đặt bàn mới",
+      newBookingFutureDesc:"Lên lịch lúc",
+      newBookingNowDesc:   "Ghi nhận đặt bàn cùng giờ",
+      pastNote:            "Không thể đặt bàn mới cho thời gian đã qua. Chỉ nhận khách vãng lai.",
+      badgePast:           "Đã qua",
+      badgeNow:            "Hiện tại",
+      badgePrimary:        "Ưu tiên",
+      badgePlan:           "Lên lịch",
+    },
+
+    list: {
+      searchPlaceholder: "Tìm khách, tag…",
+      statBookings:      "Đặt bàn",
+      statGuests:        "Khách",
+      statNoShows:       "Vắng mặt",
+      statSections:      "Khu vực",
+      avgSuffix:         "tb.",
+      perTable:          "/bàn",
+      rateLabel:         "% tỉ lệ",
+      colGuest:          "Khách",
+      colSection:        "Khu vực",
+      colTime:           "Giờ",
+      colPax:            "Số người",
+      colStatus:         "Trạng thái",
+      colActions:        "Thao tác",
+      doneBadge:         "Xong",
+      tableLabel:        "Bàn",
+      minSuffix:         "phút",
+      guestSuffix:       "khách",
+      noBookings:        "Không tìm thấy đặt bàn",
+      noBookingsSub:     "Hãy thử thay đổi bộ lọc hoặc từ khoá tìm kiếm",
+      periodLabel: {
+        All:     "Cả Ngày",
+        Morning: "Ca Sáng",
+        Lunch:   "Ca Trưa",
+        Evening: "Ca Tối",
+      },
+      periodSublabel: {
+        All:     "Toàn bộ dịch vụ · 07:00 — 22:00",
+        Morning: "Bữa sáng · 07:00 — 12:00",
+        Lunch:   "Bữa trưa · 12:00 — 16:00",
+        Evening: "Bữa tối · 17:00 — 22:00",
+      },
+      statusOptions: ["Tất cả", "Đã ngồi", "Đã đến", "Đã xác nhận", "Đang chờ", "Vắng mặt"],
+      sectionOptions: ["Tất cả", "Nhà Hàng", "Tầng Một", "Sân Thượng", "Quầy Bar"],
+    },
+
+    status: {
+      seated:    "Đã ngồi",
+      arrived:   "Đã đến",
+      confirmed: "Đã xác nhận",
+      waiting:   "Đang chờ",
+      noshow:    "Vắng mặt",
+      cancelled: "Đã hủy",
+    },
+
+    modal: {
+      tabOverview:   "Tổng quan",
+      tabMessages:   "Tin nhắn",
+      tabDocuments:  "Tài liệu",
+      tabEdit:       "Chỉnh sửa",
+      dateLabel:     "T2, 23 Tháng 3, 2026",
+      minSuffix:     "phút",
+      tableLabel:    "Bàn",
+      guestSuffix:   "khách",
+      visitsSuffix:  "lượt đến",
+      totalLabel:    "tổng",
+      crmProfile:    "Hồ sơ khách",
+      bookingTags:   "Tag đặt bàn",
+      tagsHint:      "Tag cho nhân viên biết yêu cầu đặc biệt của đặt bàn này",
+      iconsTitle:    "Các biểu tượng có nghĩa gì?",
+      iconSettings:  "Cài đặt (⚙️)",
+      iconSettingsDesc: "Chỉnh sửa đặt bàn — thay ngày, giờ, bàn, số khách hoặc trạng thái.",
+      iconMessages:  "Tin nhắn (💬)",
+      iconMessagesDesc: "Ghi chú của khách khi đặt bàn, cùng tất cả ghi chú nội bộ của nhân viên.",
+      iconDocuments: "Tài liệu (📄)",
+      iconDocumentsDesc: "File đính kèm — thực đơn, biên lai đặt cọc, xác nhận đặt bàn.",
+      iconGuests:    "Số khách (👥)",
+      iconGuestsDesc: "Tng số khách cho bếp và chuẩn bị bàn.",
+      updateStatus:  "Cập nhật trạng thái",
+      guestNote:     "Ghi chú của khách (khi đặt bàn)",
+      bookingNote:   "Ghi chú đặt bàn",
+      staffNotes:    "Ghi chú nhân viên",
+      noMessages:    "Không có tin nhắn cho đặt bàn này",
+      messagesInfo:  "Tin nhắn gồm ghi chú khách để lại khi đặt bàn và mọi ghi chú nội bộ của nhân viên.",
+      addNoteTitle:  "Thêm ghi chú nhân viên",
+      addNotePlaceholder: "Viết ghi chú nội bộ cho đặt bàn này…",
+      addNoteBtn:    "Thêm ghi chú",
+      docsInfo:      "Tài liệu là các file đính kèm — thực đơn đặt trước (🍽️), biên lai đặt cọc (🧾), và form đặt bàn (📋).",
+      noDocs:        "Chưa có tài liệu đính kèm",
+      noDocsSub:     "Tải lên thực đơn, biên lai hoặc form bên dưới",
+      attachFile:    "Đính kèm file",
+      editInfo:      "Các thay đổi ở đây chỉ cập nhật đặt bàn này. Khách sẽ nhận email xác nhận mới nếu bạn chọn thông báo.",
+      today:         "Hôm nay",
+    },
+  },
+} as const;
+
+export type Translations = typeof T["en"];
+export { T };
