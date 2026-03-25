@@ -1,4 +1,4 @@
-export type Status = "seated" | "arrived" | "confirmed" | "waiting" | "noshow" | "cancelled";
+export type Status = "seated" | "arrived" | "confirmed" | "waiting" | "noshow" | "cancelled" | "completed";
 export type Section = "Restaurant" | "First floor" | "Terrace" | "Bar";
 export type Period = "morning" | "lunch" | "evening";
 
@@ -145,6 +145,7 @@ export const STATUS_META: Record<Status, { label: string; color: string; bg: str
   waiting:   { label: "Waiting",   color: "#b45309", bg: "#fffbeb", dot: "#f59e0b" },
   noshow:    { label: "No-show",   color: "#b91c1c", bg: "#fef2f2", dot: "#ef4444" },
   cancelled: { label: "Cancelled", color: "#6b7280", bg: "#f3f4f6", dot: "#d1d5db" },
+  completed: { label: "Completed", color: "#4b5563", bg: "#f3f4f6", dot: "#9ca3af" },
 };
 
 // ── Today is March 23, 2026 ───────────────────────────────────
@@ -159,15 +160,29 @@ export function getBookingsForDay(day: number): Booking[] {
   return ALL_BOOKINGS.filter(b => (b.id * 7 + day * 3) % 11 < 8);
 }
 
-/** True when a booking is "done" — visually faded in all views. */
-export function isDoneBooking(b: Booking, nowMin: number, day: number): boolean {
-  if (day < TODAY_DAY) return true;   // past day: everything done
-  if (day > TODAY_DAY) return false;  // future day: nothing done yet
-  // today: noshow/cancelled always faded
-  if (b.status === "noshow" || b.status === "cancelled") return true;
-  // active statuses (seated/arrived) are never faded regardless of time
-  if (b.status === "seated" || b.status === "arrived") return false;
-  // confirmed/waiting: faded once end-time has passed
-  const [eh, em] = b.endTime.split(":").map(Number);
-  return (eh * 60 + em) < nowMin;
+export type TimeState = "past" | "current" | "upcoming";
+
+/** Determines the visual hierarchy state of a booking on the timeline based on its status and time. */
+export function getBookingTimeState(b: Booking, nowMin: number, day: number): TimeState {
+  if (b.status === "completed" || b.status === "noshow" || b.status === "cancelled") return "past";
+  if (day < TODAY_DAY) return "past";
+  if (day > TODAY_DAY) return "upcoming";
+
+  // Seated or arrived guests are always active/current regardless of exact time overlap.
+  if (b.status === "seated" || b.status === "arrived") return "current";
+
+  const [sh, sm] = b.time.split(":").map(Number);
+  const startMin = sh * 60 + sm;
+  
+  if (startMin < nowMin) {
+    // Started before now, but not active -> fade away as past
+    return "past";
+  }
+  
+  // Highlight as "Current" if it starts within the next 30 minutes
+  if (startMin - nowMin <= 30 && startMin >= nowMin) {
+    return "current";
+  }
+  
+  return "upcoming";
 }

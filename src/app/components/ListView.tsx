@@ -5,7 +5,7 @@ import {
   Sun, Moon, Coffee, ChevronDown, ChevronRight,
   Filter, SortAsc, Star, Utensils,
 } from "lucide-react";
-import { getBookingsForDay, isDoneBooking, PERIOD_THEMES, STATUS_META, type Booking, type Status } from "../data/bookings";
+import { getBookingsForDay, getBookingTimeState, PERIOD_THEMES, STATUS_META, type Booking, type Status } from "../data/bookings";
 import { useLang } from "../context/LanguageContext";
 
 interface ListViewProps {
@@ -84,7 +84,8 @@ function BookingRow({ booking, accentColor, onBookingClick, nowMin, day }: { boo
   const dur = duration(booking.time, booking.endTime);
   const statusMeta = STATUS_META[booking.status];
   const color = avatarColor(booking.guestName);
-  const done = isDoneBooking(booking, nowMin, day);
+  const timeState = getBookingTimeState(booking, nowMin, day);
+  const done = timeState === "past";
 
   return (
     <div

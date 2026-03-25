@@ -344,11 +344,15 @@ function NoteItem({ note, todayLabel }: { note: StaffNote; todayLabel: string })
 }
 
 // ── Edit Tab ──────────────────────────────────────────────────
-function EditTab({ booking, enriched, onClose }: {
+function EditTab({ booking, enriched, selectedDay, onClose }: {
   booking: typeof ALL_BOOKINGS[0];
   enriched: { phone: string; email: string; guestNote: string };
+  selectedDay: number;
   onClose: () => void;
 }) {
+  const { t } = useLang();
+  const te = t.edit;
+
   const [name,        setName]        = useState(booking.guestName);
   const [phone,       setPhone]       = useState(enriched.phone);
   const [email,       setEmail]       = useState(enriched.email);
@@ -362,28 +366,46 @@ function EditTab({ booking, enriched, onClose }: {
   const [saved,       setSaved]       = useState(false);
   const [notifyGuest, setNotifyGuest] = useState(true);
 
+  // Determine if booking is in the past
+  const now = new Date();
+  const currentDay = now.getDate();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const [endH, endM] = booking.endTime.split(":").map(Number);
+  
+  const isPast = selectedDay < currentDay || (selectedDay === currentDay && (endH * 60 + endM) < nowMins);
+
   function handleSave() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  const Field = ({ label, children, value, isPastMode }: { label: string; children?: React.ReactNode; value?: string; isPastMode?: boolean }) => (
     <div>
-      <label className="block text-gray-600 mb-1" style={{ fontSize: 11, fontWeight: 600 }}>{label}</label>
-      {children}
+      <label className="block text-gray-500 mb-1" style={{ fontSize: 11, fontWeight: 600 }}>{label}</label>
+      {isPastMode ? (
+        <div className="text-gray-900 font-medium py-1.5" style={{ fontSize: 13 }}>{value || "—"}</div>
+      ) : (
+        children
+      )}
     </div>
   );
 
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-gray-800 focus:outline-none focus:border-emerald-400 bg-white transition-colors";
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-gray-800 focus:outline-none focus:border-emerald-400 bg-white transition-colors disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed";
   const inputStyle = { fontSize: 12 };
 
   return (
     <div className="p-5 space-y-5">
-      {/* Save success banner */}
+      {/* Save success / Past warning banners */}
+      {isPast && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-orange-50 border border-orange-200">
+          <Info size={14} className="text-orange-500 shrink-0" />
+          <span className="text-orange-700" style={{ fontSize: 12, fontWeight: 600 }}>{te.pastWarning}</span>
+        </div>
+      )}
       {saved && (
         <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
           <Check size={14} className="text-emerald-600" />
-          <span className="text-emerald-700" style={{ fontSize: 12, fontWeight: 600 }}>Đã lưu thay đổi!</span>
+          <span className="text-emerald-700" style={{ fontSize: 12, fontWeight: 600 }}>{te.saveSuccess}</span>
         </div>
       )}
 
@@ -393,21 +415,21 @@ function EditTab({ booking, enriched, onClose }: {
           <div className="w-5 h-5 rounded bg-emerald-100 flex items-center justify-center">
             <Users size={11} className="text-emerald-600" />
           </div>
-          <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 700 }}>Thông tin khách</span>
+          <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 700 }}>{te.guestInfo}</span>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Họ tên khách">
+          <Field label={te.guestName} value={name} isPastMode={isPast}>
             <input value={name} onChange={e => setName(e.target.value)}
               className={inputCls} style={inputStyle} />
           </Field>
-          <Field label="Số điện thoại">
+          <Field label={te.phone} value={phone} isPastMode={isPast}>
             <div className="relative">
               <Phone size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={phone} onChange={e => setPhone(e.target.value)}
                 className={inputCls} style={{ ...inputStyle, paddingLeft: 28 }} />
             </div>
           </Field>
-          <Field label="Email" >
+          <Field label={te.email} value={email} isPastMode={isPast}>
             <div className="relative col-span-2">
               <Mail size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={email} onChange={e => setEmail(e.target.value)}
@@ -425,43 +447,52 @@ function EditTab({ booking, enriched, onClose }: {
           <div className="w-5 h-5 rounded bg-blue-100 flex items-center justify-center">
             <Calendar size={11} className="text-blue-600" />
           </div>
-          <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 700 }}>Thông tin đặt bàn</span>
+          <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 700 }}>{te.bookingInfo}</span>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Giờ bắt đầu">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Field label={te.time} value={time} isPastMode={isPast}>
             <input type="time" value={time} onChange={e => setTime(e.target.value)}
               className={inputCls} style={inputStyle} />
           </Field>
-          <Field label="Giờ kết thúc">
+          <Field label={te.endTime} value={endTime} isPastMode={isPast}>
             <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
               className={inputCls} style={inputStyle} />
           </Field>
-          <Field label="Số khách">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setGuests(g => String(Math.max(1, Number(g) - 1)))}
+          <Field label={te.guests} value={guests ? `${guests} ${t.modal.guestSuffix ?? "khách"}` : ""} isPastMode={isPast}>
+            <div className="flex items-center gap-1.5 w-full">
+              <button onClick={() => setGuests(g => String(Math.max(1, (parseInt(g) || 1) - 1)))}
                 className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
                 style={{ fontSize: 16 }}>−</button>
-              <input value={guests} onChange={e => setGuests(e.target.value)}
-                className="flex-1 border border-gray-200 rounded-lg px-2 py-2 text-center text-gray-800 focus:outline-none focus:border-emerald-400" style={{ fontSize: 13, fontWeight: 600 }} />
-              <button onClick={() => setGuests(g => String(Number(g) + 1))}
+              <input type="number" min={1} value={guests}
+                onChange={e => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val >= 1) setGuests(String(val));
+                  else if (e.target.value === "") setGuests("");
+                }}
+                onBlur={() => {
+                  if (guests === "" || parseInt(guests) < 1) setGuests("1");
+                }}
+                className={`w-12 min-w-0 flex-1 border border-gray-200 rounded-lg px-2 py-2 text-center text-gray-800 focus:outline-none focus:border-emerald-400`} 
+                style={{ fontSize: 13, fontWeight: 600 }} />
+              <button onClick={() => setGuests(g => String((parseInt(g) || 1) + 1))}
                 className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
                 style={{ fontSize: 16 }}>+</button>
             </div>
           </Field>
-          <Field label="Khu vực">
+          <Field label={te.section} value={section} isPastMode={isPast}>
             <select value={section} onChange={e => setSection(e.target.value)}
               className={inputCls} style={inputStyle}>
               {["Restaurant","First floor","Terrace","Bar","Private room"].map(s =>
                 <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
-          <Field label="Bàn số">
+          <Field label={te.table} value={table} isPastMode={isPast}>
             <input value={table} onChange={e => setTable(e.target.value)}
-              className={inputCls} style={inputStyle} placeholder="VD: 5" />
+              className={inputCls} style={inputStyle} placeholder={te.tablePlaceholder} />
           </Field>
-          <Field label="Đặt cọc (₫)">
+          <Field label={te.deposit} value={deposit ? `${parseInt(deposit).toLocaleString()} ₫` : ""} isPastMode={isPast}>
             <input value={deposit} onChange={e => setDeposit(e.target.value)}
-              className={inputCls} style={inputStyle} placeholder="VD: 500000" />
+              className={inputCls} style={inputStyle} placeholder={te.depositPlaceholder} />
           </Field>
         </div>
       </div>
@@ -474,33 +505,36 @@ function EditTab({ booking, enriched, onClose }: {
           <div className="w-5 h-5 rounded bg-purple-100 flex items-center justify-center">
             <MessageSquare size={11} className="text-purple-600" />
           </div>
-          <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 700 }}>Yêu cầu đặc biệt</span>
+          <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 700 }}>{te.specialReq}</span>
         </div>
-        <textarea value={request} onChange={e => setRequest(e.target.value)}
-          rows={3}
-          placeholder="Dị ứng thực phẩm, yêu cầu bàn, dịp đặc biệt..."
-          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-700 focus:outline-none focus:border-emerald-400 resize-none bg-white transition-colors"
-          style={{ fontSize: 12 }} />
+        {isPast ? (
+            <div className="text-gray-900 border border-transparent py-1.5" style={{ fontSize: 13, lineHeight: 1.6 }}>{request || "—"}</div>
+        ) : (
+          <textarea value={request} onChange={e => setRequest(e.target.value)}
+            rows={3}
+            placeholder={te.reqPlaceholder}
+            className={`w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-700 focus:outline-none focus:border-emerald-400 resize-none bg-white transition-colors`}
+            style={{ fontSize: 12 }} />
+        )}
       </div>
 
       {/* ── Notify toggle + Action buttons ── */}
       <div className="space-y-3 pt-1">
         {/* Notify toggle */}
-        <div className="flex items-start gap-3 p-3 rounded-xl border-2 transition-all"
+        <div className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all ${isPast ? "opacity-60 pointer-events-none" : ""}`}
           style={{ borderColor: notifyGuest ? "#10b981" : "#e5e7eb", backgroundColor: notifyGuest ? "#f0fdf4" : "#f9fafb" }}>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-0.5">
               {notifyGuest ? <Bell size={12} className="text-emerald-600" /> : <BellOff size={12} className="text-gray-400" />}
-              <span style={{ fontSize: 12, fontWeight: 600, color: notifyGuest ? "#047857" : "#374151" }}>Thông báo cho khách?</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: notifyGuest ? "#047857" : "#374151" }}>{te.notifyToggle}</span>
             </div>
             <p style={{ fontSize: 11, lineHeight: 1.5, color: notifyGuest ? "#065f46" : "#6b7280" }}>
-              {notifyGuest
-                ? "Khách sẽ nhận email xác nhận mới ngay sau khi lưu."
-                : "Thay đổi chỉ cập nhật nội bộ — khách không nhận thông báo gì."}
+              {notifyGuest ? te.notifyOn : te.notifyOff}
             </p>
           </div>
           <button
             onClick={() => setNotifyGuest(v => !v)}
+            disabled={isPast}
             className="relative inline-flex rounded-full shrink-0 transition-colors duration-200 focus:outline-none mt-0.5"
             style={{ width: 38, height: 22, backgroundColor: notifyGuest ? "#10b981" : "#d1d5db" }}
           >
@@ -512,16 +546,16 @@ function EditTab({ booking, enriched, onClose }: {
         <div className="flex items-center justify-between">
           <button onClick={onClose}
             className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-            style={{ fontSize: 12 }}>Huỷ</button>
+            style={{ fontSize: 12 }}>{te.btnCancel}</button>
           <div className="flex gap-2">
-            <button
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
-              style={{ fontSize: 12 }}>Xoá đặt bàn</button>
-            <button onClick={handleSave}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-white transition-all hover:opacity-90"
+            <button disabled={isPast}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              style={{ fontSize: 12 }}>{te.btnDelete}</button>
+            <button onClick={handleSave} disabled={isPast}
+              className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-white transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ fontSize: 12, backgroundColor: notifyGuest ? "#10b981" : "#6366f1" }}>
               {notifyGuest ? <Bell size={12} /> : <Check size={13} />}
-              {notifyGuest ? "Lưu & gửi thông báo" : "Lưu nội bộ"}
+              {notifyGuest ? te.btnSaveNotify : te.btnSaveInternal}
             </button>
           </div>
         </div>
@@ -535,18 +569,25 @@ function EditTab({ booking, enriched, onClose }: {
 interface BookingDetailModalProps {
   bookingId: number | null;
   initialTab?: "overview" | "messages" | "documents" | "edit";
+  selectedDay: number;
   onClose: () => void;
   onOpenCRM?: (name: string) => void;
 }
 type ModalTab = "overview" | "messages" | "documents" | "edit";
 
-export function BookingDetailModal({ bookingId, initialTab = "overview", onClose, onOpenCRM }: BookingDetailModalProps) {
+export function BookingDetailModal({ bookingId, initialTab = "overview", selectedDay, onClose, onOpenCRM }: BookingDetailModalProps) {
   const [activeTab,     setActiveTab]     = useState<ModalTab>(initialTab);
   const [currentStatus, setCurrentStatus] = useState<Status | null>(null);
   const [newNote,       setNewNote]       = useState("");
   const [previewDoc,    setPreviewDoc]    = useState<Document | null>(null);
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const tm = t.modal;
+
+  const d = new Date();
+  d.setDate(selectedDay);
+  const dateStr = new Intl.DateTimeFormat(lang === "vi" ? "vi-VN" : "en-US", {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+  }).format(d);
 
   const booking  = ALL_BOOKINGS.find(b => b.id === bookingId);
   const enriched = booking ? (BOOKING_ENRICHED[booking.id] ?? buildFallbackEnriched(booking)) : undefined;
@@ -579,16 +620,13 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", onClose
         onClick={onClose}
       />
 
-      {/* Panel */}
+      {/* Drawer Panel */}
       <div
-        className="fixed z-50 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{
-          width: 580, maxHeight: "90vh",
-          top: "50%", left: "50%",
-          transform: isOpen ? "translate(-50%,-50%) scale(1)" : "translate(-50%,-50%) scale(0.96)",
-          opacity: isOpen ? 1 : 0,
-          transition: "transform 0.2s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
-          pointerEvents: isOpen ? "auto" : "none",
+        className="fixed top-0 right-0 bottom-0 z-50 bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden"
+        style={{ 
+          width: 540, maxWidth: "100vw",
+          transform: isOpen ? "translateX(0)" : "translateX(100%)",
+          pointerEvents: isOpen ? "auto" : "none" 
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -604,7 +642,7 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", onClose
                   <StatusPill status={status} label={statusLabel(status)} />
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-gray-500 flex-wrap" style={{ fontSize: 11 }}>
-                  <span className="flex items-center gap-1"><Calendar size={11} /> {tm.dateLabel}</span>
+                  <span className="flex items-center gap-1"><Calendar size={11} /> {dateStr}</span>
                   <span className="text-gray-300">·</span>
                   <span className="flex items-center gap-1"><Clock size={11} /> {booking.time} – {booking.endTime} ({dur} {tm.minSuffix})</span>
                   <span className="text-gray-300">·</span>
@@ -724,22 +762,11 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", onClose
                 </div>
               )}
 
-              {/* Icon guide */}
-              <div>
-                <div className="text-gray-700 mb-1" style={{ fontSize: 12, fontWeight: 600 }}>{tm.iconsTitle}</div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 divide-y divide-gray-100">
-                  <IconGuideRow icon={<Settings size={14} className="text-gray-500" />}      label={tm.iconSettings}  description={tm.iconSettingsDesc} />
-                  <IconGuideRow icon={<MessageSquare size={14} className="text-blue-500" />} label={tm.iconMessages}  description={tm.iconMessagesDesc}  count={msgCount} />
-                  <IconGuideRow icon={<FileText size={14} className="text-purple-500" />}    label={tm.iconDocuments} description={tm.iconDocumentsDesc}  count={docCount} />
-                  <IconGuideRow icon={<Users size={14} className="text-gray-500" />}         label={tm.iconGuests}    description={`${tm.iconGuestsDesc} (${booking.guests})`} />
-                </div>
-              </div>
-
               {/* Status buttons */}
               <div>
                 <div className="text-gray-700 mb-2" style={{ fontSize: 12, fontWeight: 600 }}>{tm.updateStatus}</div>
                 <div className="flex gap-1.5 flex-wrap">
-                  {(["confirmed","arrived","seated","waiting","noshow","cancelled"] as Status[]).map(s => {
+                  {(["confirmed","arrived","seated","waiting","noshow","cancelled","completed"] as Status[]).map(s => {
                     const m = STATUS_META[s];
                     const isActive = s === status;
                     return (
@@ -875,7 +902,7 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", onClose
 
           {/* ═══ EDIT ═══ */}
           {activeTab === "edit" && (
-            <EditTab booking={booking} enriched={enriched} onClose={onClose} />
+            <EditTab booking={booking} enriched={enriched} selectedDay={selectedDay} onClose={onClose} />
           )}
         </div>
       </div>

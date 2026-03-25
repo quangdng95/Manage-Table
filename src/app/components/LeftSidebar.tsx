@@ -1,11 +1,12 @@
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useState as useStateAlias } from "react";
 import {
   ChevronLeft, ChevronRight, Settings, MessageSquare,
   FileText, Calendar, Users, Pencil, Sun, Coffee, Moon, Clock, Globe,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Info, X,
 } from "lucide-react";
 import { useLang } from "../context/LanguageContext";
 import type { Lang } from "../i18n/translations";
+import { getBookingsForDay } from "../data/bookings";
 
 // ── March 2026 calendar ───────────────────────────────────────
 const calendarWeeks = [
@@ -17,9 +18,9 @@ const calendarWeeks = [
   { week: 14, days: [30, 31, null, null, null, null, null] },
 ];
 
-const TODAY_DAY = 23;
+const TODAY_DAY = new Date().getDate();
 
-// ── Sidebar booking data ──────────────────────────────────────
+// ── Sidebar booking data type ────────────────────────────────
 interface SideBooking {
   id: number;
   name: string;
@@ -31,20 +32,6 @@ interface SideBooking {
   highlight?: string;
   timeGroup: string;
 }
-
-const sidebarBookings: SideBooking[] = [
-  { id: 301, name: "Alice Johnson",    tags: [{ label: "Evening menu",    color: "#16a34a" }], guests: 2,  hasNote: true,  hasFile: true,  hasSettings: true, highlight: "#f0fdf4", timeGroup: "17:00" },
-  { id: 302, name: "Michael Smithson", tags: [{ label: "Seafood special", color: "#0891b2" }], guests: 8,  hasSettings: true,                                                         timeGroup: "17:00" },
-  { id: 303, name: "Jessica Taylor",   guests: 4, hasNote: true, hasFile: true, hasSettings: true, highlight: "#fef2f2", timeGroup: "17:00" },
-  { id: 304, name: "Clark Benson",     guests: 3, hasNote: true, hasSettings: true,                                                         timeGroup: "17:30" },
-  { id: 305, name: "David Brown",      guests: 6, hasNote: true, hasFile: true, hasSettings: true, highlight: "#fffbeb", timeGroup: "17:45" },
-  { id: 306, name: "Emily Davis",      tags: [{ label: "Four seasons",    color: "#7c3aed" }], guests: 2,  hasSettings: true, highlight: "#f5f3ff", timeGroup: "17:45" },
-  { id: 307, name: "John Elliot",      tags: [{ label: "Vegetarian menu", color: "#15803d" }], guests: 2,  hasSettings: true,                       timeGroup: "17:45" },
-  { id: 308, name: "Sophia Williams",  guests: 11, hasNote: true, hasSettings: true, timeGroup: "18:15" },
-  { id: 309, name: "Isabella White",   guests: 2,  hasNote: true, hasSettings: true, timeGroup: "18:15" },
-  { id: 310, name: "James Wilson",     guests: 6,  hasNote: true, hasSettings: true, timeGroup: "18:15" },
-  { id: 311, name: "Olivia Martinez",  tags: [{ label: "Four seasons", color: "#7c3aed" }], guests: 3, hasNote: true, hasSettings: true, timeGroup: "18:15" },
-];
 
 // ── Sub-components ────────────────────────────────────────────
 
@@ -261,52 +248,186 @@ function BookingItem({ booking, onBookingClick, onIconClick }: {
 }) {
   return (
     <div
-      className="flex items-center justify-between px-2 py-1 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-      style={{ backgroundColor: booking.highlight || undefined, minHeight: 28 }}
+      className="p-3 rounded-xl border border-gray-100 bg-white shadow-sm hover:border-emerald-300 hover:shadow-md cursor-pointer transition-all flex flex-col gap-2 relative group"
+      style={{ backgroundColor: booking.highlight || "white" }}
+      onClick={() => onBookingClick(booking.id)}
     >
-      <div className="flex items-center gap-1 flex-1 min-w-0">
-        <div className="flex flex-col min-w-0">
-          <div className="flex items-center gap-1 flex-wrap">
-            <button
-              className="text-gray-800 truncate hover:text-emerald-700 hover:underline transition-colors text-left"
-              style={{ fontSize: 11, fontWeight: 500 }}
-              onClick={() => onBookingClick(booking.id)}
-            >
-              {booking.name}
-            </button>
-            {booking.tags?.map((tag) => (
-              <span
-                key={tag.label}
-                className="px-1 rounded text-white cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ fontSize: 9, backgroundColor: tag.color, whiteSpace: "nowrap" }}
-                onClick={() => onBookingClick(booking.id)}
-                title={`Tag: ${tag.label}`}
-              >
-                {tag.label}
-              </span>
-            ))}
+      <div className="flex justify-between items-start">
+        <div>
+          <div className="text-gray-900 font-bold" style={{ fontSize: 13 }}>{booking.name}</div>
+          <div className="flex items-center gap-1.5 mt-0.5 text-gray-500" style={{ fontSize: 11 }}>
+            <Users size={11} /> {booking.guests} Guests
           </div>
         </div>
-      </div>
-      <div className="flex items-center gap-0.5 shrink-0 ml-1">
-        {booking.hasSettings && (
-          <button className="text-gray-400 hover:text-gray-600 transition-colors" title="Edit"
-            onClick={() => onIconClick(booking.id, "edit")}><Settings size={10} /></button>
-        )}
-        {booking.hasNote && (
-          <button className="text-blue-300 hover:text-blue-500 transition-colors" title="Messages"
-            onClick={() => onIconClick(booking.id, "messages")}><MessageSquare size={10} /></button>
-        )}
-        {booking.hasFile && (
-          <button className="text-purple-300 hover:text-purple-500 transition-colors" title="Documents"
-            onClick={() => onIconClick(booking.id, "documents")}><FileText size={10} /></button>
-        )}
-        <div className="flex items-center gap-0.5 ml-1">
-          <span className="font-medium text-gray-700" style={{ fontSize: 11 }}>{booking.guests}</span>
-          <Users size={9} className="text-gray-500" />
+        
+        {/* Actions row */}
+        <div className="flex items-center gap-1">
+          {booking.hasSettings && (
+            <button className="p-1.5 rounded-lg bg-gray-50 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Edit"
+              onClick={e => { e.stopPropagation(); onIconClick(booking.id, "edit"); }}><Settings size={12} /></button>
+          )}
+          {booking.hasNote && (
+            <button className="p-1.5 rounded-lg bg-gray-50 text-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Messages"
+              onClick={e => { e.stopPropagation(); onIconClick(booking.id, "messages"); }}><MessageSquare size={12} /></button>
+          )}
+          {booking.hasFile && (
+            <button className="p-1.5 rounded-lg bg-gray-50 text-purple-400 hover:text-purple-600 hover:bg-purple-50 transition-colors" title="Documents"
+              onClick={e => { e.stopPropagation(); onIconClick(booking.id, "documents"); }}><FileText size={12} /></button>
+          )}
         </div>
       </div>
+      
+      {/* Tags */}
+      {booking.tags && booking.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-1 border-t border-gray-50 pt-2">
+          {booking.tags.map(tag => (
+            <span key={tag.label} className="px-2 py-0.5 rounded-md text-white font-medium shadow-sm transition-opacity hover:opacity-90" style={{ fontSize: 10, backgroundColor: tag.color }}>{tag.label}</span>
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+// ── Dynamic booking list ──────────────────────────────────────
+function DynamicBookingList({ selectedDay, onBookingClick, onIconClick }: {
+  selectedDay: number;
+  onBookingClick: (id: number) => void;
+  onIconClick: (id: number, tab: string) => void;
+}) {
+  const dayBookings = getBookingsForDay(selectedDay);
+  
+  // Sort by start time
+  const sorted = [...dayBookings].sort((a, b) => a.time.localeCompare(b.time));
+  
+  // Filter for ONLY Upcoming bookings (per requirements)
+  const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+  const isToday = selectedDay === TODAY_DAY;
+  
+  const upcomingBookings = sorted.filter(b => {
+    if (selectedDay < TODAY_DAY) return false;
+    if (selectedDay > TODAY_DAY) return true;
+    const [gh, gm] = b.time.split(":").map(Number);
+    return (gh * 60 + gm) >= nowMins;
+  });
+
+  // Build time groups
+  type Group = { time: string; bookings: typeof upcomingBookings };
+  const groupMap = new Map<string, Group>();
+  for (const b of upcomingBookings) {
+    if (!groupMap.has(b.time)) groupMap.set(b.time, { time: b.time, bookings: [] });
+    groupMap.get(b.time)!.bookings.push(b);
+  }
+  const groups = Array.from(groupMap.values());
+
+  if (groups.length === 0) {
+    return (
+      <div className="px-3 py-10 text-center text-gray-400 flex flex-col items-center gap-2" style={{ fontSize: 12 }}>
+        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center shrink-0 mb-1">
+          <Calendar size={16} className="text-gray-300" />
+        </div>
+        No upcoming bookings
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 space-y-5">
+      {groups.map((group) => {
+        return (
+          <div key={group.time}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="px-2 py-1 rounded-md bg-emerald-50 border border-emerald-100 text-emerald-800 font-bold" style={{ fontSize: 11, letterSpacing: "0.02em" }}>{group.time}</span>
+              <div className="h-px flex-1 bg-gray-100" />
+            </div>
+            <div className="space-y-3">
+              {group.bookings.map((b) => (
+                <BookingItem
+                  key={b.id}
+                  booking={{
+                    id: b.id,
+                    name: b.guestName,
+                    guests: b.guests,
+                    tags: b.tags.length > 0 ? b.tags.map(t => ({ label: t, color: "#0f766e" })) : undefined,
+                    hasNote: b.hasNote,
+                    hasFile: b.hasFile,
+                    hasSettings: true,
+                    timeGroup: b.time,
+                  }}
+                  onBookingClick={onBookingClick}
+                  onIconClick={onIconClick}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Icon Legend (collapsible) ─────────────────────────────────
+function IconLegend() {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <>
+      <div className="p-3 border-t border-gray-100 bg-gray-50 flex-shrink-0">
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 hover:border-emerald-200 hover:text-emerald-700 transition-all text-gray-600 shadow-sm"
+          style={{ fontSize: 12, fontWeight: 600 }}
+        >
+          <Info size={14} /> View Icon Legend
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={() => setOpen(false)} />
+          <div 
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden"
+            style={{ animation: "fadeInUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)" }}
+          >
+            <style>{`@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
+            
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-2.5 font-bold text-gray-800" style={{ fontSize: 14 }}>
+                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><Info size={12} strokeWidth={3} /></div> 
+                What do the icons mean?
+              </div>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full w-7 h-7 flex items-center justify-center transition-colors"><X size={14}/></button>
+            </div>
+            
+            <div className="p-5 space-y-4 bg-white">
+              {[
+                { icon: <Settings size={14} className="text-emerald-600" />, label: "Settings", desc: "Open booking editor to modify reservations", bg: "bg-emerald-50" },
+                { icon: <MessageSquare size={14} className="text-blue-600" />, label: "Messages", desc: "Guest or staff notes and requests", bg: "bg-blue-50" },
+                { icon: <FileText size={14} className="text-purple-600" />, label: "Documents", desc: "Attached menus, receipts & forms", bg: "bg-purple-50" },
+                { icon: <Users size={14} className="text-gray-600" />, label: "Guests", desc: "Total number of guests in party", bg: "bg-gray-50" },
+              ].map(row => (
+                <div key={row.label} className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-colors">
+                  <div className={`w-9 h-9 rounded-lg ${row.bg} flex items-center justify-center shrink-0`}>{row.icon}</div>
+                  <div>
+                    <div className="text-gray-900" style={{ fontSize: 13, fontWeight: 700 }}>{row.label}</div>
+                    <div className="text-gray-500 mt-0.5" style={{ fontSize: 12, lineHeight: 1.4 }}>{row.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 text-center flex justify-end">
+              <button 
+                onClick={() => setOpen(false)}
+                className="px-5 py-2 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors shadow-sm"
+                style={{ fontSize: 12 }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -432,24 +553,12 @@ export function LeftSidebar({ onOpenSettings, onBookingClick, onIconClick, selec
           onToggleStats={() => setStatsOpen(v => !v)}
         />
         <StatsPanel collapsed={!statsOpen} />
-        {/* Time-grouped booking list */}
-        <div>
-          {groups.map((group) => {
-            const groupBookings = sidebarBookings.filter((b) => b.timeGroup === group.time);
-            return (
-              <div key={group.time}>
-                <div className="px-2 py-1 bg-gray-50 border-b border-gray-100 flex items-center gap-1">
-                  <Clock size={10} className="text-gray-400" />
-                  <span className="font-semibold text-gray-600" style={{ fontSize: 11 }}>{group.time}</span>
-                </div>
-                {groupBookings.map((b) => (
-                  <BookingItem key={b.id} booking={b} onBookingClick={onBookingClick} onIconClick={onIconClick} />
-                ))}
-              </div>
-            );
-          })}
-        </div>
+        {/* Time-grouped booking list — dynamic from selectedDay */}
+        <DynamicBookingList selectedDay={selectedDay} onBookingClick={onBookingClick} onIconClick={onIconClick} />
       </div>
+
+      {/* Icon Legend — global reference placed above language toggle */}
+      <IconLegend />
 
       {/* Language toggle — pinned to bottom */}
       <LangToggle />

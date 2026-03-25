@@ -3,18 +3,13 @@ import {
   Search, X, MessageSquare, FileText,
   ChevronDown, ChevronRight, Plus, Zap, Info, Clock,
 } from "lucide-react";
-import { ALL_BOOKINGS, getBookingsForDay, isDoneBooking, type Booking } from "../data/bookings";
+import { ALL_BOOKINGS, getBookingsForDay, getBookingTimeState, type Booking } from "../data/bookings";
 import { useLang } from "../context/LanguageContext";
 
 // ── Layout constants ─────────────────────────────────────────
 const START_HOUR  = 7;
 const END_HOUR    = 22;
-const PX_PER_HOUR = 88;
-const PX_PER_MIN  = PX_PER_HOUR / 60;
-const TL_WIDTH    = (END_HOUR - START_HOUR) * PX_PER_HOUR; // 1320
-const START_MIN   = START_HOUR * 60;
 const LABEL_W     = 90;
-const ROW_H       = 28;
 const BAND_H      = 20;
 const HDR_H       = 38;
 const SEC_H       = 24;
@@ -27,8 +22,6 @@ const PERIOD_CONFIG: Record<string, { startH: number; endH: number }> = {
   "Lunch":   { startH: 12, endH: 17 },
   "Evening": { startH: 17, endH: 22 },
 };
-const FULL_PX_HOUR = 88;
-const ZOOM_PX_HOUR = 264; // 3× zoom when a period is selected
 
 // ── Period bands ─────────────────────────────────────────────
 const BANDS = [
@@ -251,6 +244,22 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
   const [search,    setSearch]    = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [popup,     setPopup]     = useState<SlotPopupData | null>(null);
+  const [zoom,      setZoom]      = useState(1);
+  const [rowHeight, setRowHeight] = useState(28);
+  const scrollRef                 = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setZoom(z => Math.max(1, Math.min(5, z - (e.deltaY || e.deltaX) * 0.01)));
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   // ── Live "now" minute — updates every 60 s ──────────────────
   const [nowMin, setNowMin] = useState(() => {
@@ -267,13 +276,13 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
 
   // ── Dynamic layout based on period ──────────────────────────
   const { startH, endH } = PERIOD_CONFIG[period] ?? PERIOD_CONFIG["All"];
-  const PX_PER_HOUR = period === "All" ? FULL_PX_HOUR : ZOOM_PX_HOUR;
-  const PX_PER_MIN  = PX_PER_HOUR / 60;
   const START_MIN   = startH * 60;
   const END_MIN     = endH * 60;
-  const TL_WIDTH    = (endH - startH) * PX_PER_HOUR;
+  const totalMins   = END_MIN - START_MIN;
   const qCount      = (endH - startH) * 4 + 1;
   const hours       = Array.from({ length: endH - startH + 1 }, (_, i) => startH + i);
+
+  const minToPct = (m: number) => ((m - START_MIN) / totalMins) * 100;
 
   // Filter bookings by day then by period/time window
   const dayBookings = getBookingsForDay(day);
@@ -306,18 +315,26 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
   function handleCellClick(e: React.MouseEvent<HTMLDivElement>, section: string, table: number) {
     const rect = e.currentTarget.getBoundingClientRect();
     const relX  = e.clientX - rect.left;
-    const rawMin = relX / PX_PER_MIN + START_MIN;
+    const rawMin = (relX / rect.width) * totalMins + START_MIN;
     const snapped = Math.round(rawMin / 15) * 15;
     const clamped = Math.max(START_MIN, Math.min(END_MIN - 15, snapped));
     setPopup({ section, table, time: minToTimeStr(clamped), timeMin: clamped, screenX: e.clientX, screenY: e.clientY });
   }
 
-  const currentX = nowMin >= START_MIN && nowMin <= END_MIN
-    ? (nowMin - START_MIN) * PX_PER_MIN
+  const currentPct = nowMin >= START_MIN && nowMin <= END_MIN
+    ? minToPct(nowMin)
     : -9999; // hide if outside view
 
+  function scrollToNow() {
+    const el = scrollRef.current;
+    if (!el || currentPct <= 0) return;
+    const trackWidth = el.scrollWidth - LABEL_W;
+    const targetX = LABEL_W + (currentPct / 100) * trackWidth - (el.clientWidth / 2);
+    el.scrollTo({ left: Math.max(0, targetX), behavior: "smooth" });
+  }
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-white relative">
+    <div className="flex-1 flex flex-col overflow-hidden bg-white relative" style={{ minHeight: 0 }}>
 
       {/* ── Search toolbar ── */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-white shrink-0 flex-wrap">
@@ -363,29 +380,45 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
         </div>
 
         <div className="ml-auto flex items-center gap-1.5 text-gray-400" style={{ fontSize: 10.5 }}>
-          <div className="w-2 h-2 rounded-full bg-blue-500" />
-          <span>{tl.nowLabel} · {minToTimeStr(nowMin)}</span>
-          <span className="text-gray-300">·</span>
+          <div className="flex items-center gap-2 px-2 border-r border-gray-200 mr-1">
+            <span className="text-gray-400">Row</span>
+            <input type="range" min={28} max={64} step={4} value={rowHeight} onChange={(e) => setRowHeight(parseInt(e.target.value))} className="w-20 accent-emerald-500 cursor-pointer" />
+          </div>
+          <div className="flex items-center gap-2 px-2 border-r border-gray-200 mr-1">
+            <span className="text-gray-400">Zoom</span>
+            <input type="range" min={1} max={5} step={0.1} value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-20 accent-emerald-500 cursor-pointer" />
+          </div>
+          <button onClick={scrollToNow} className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition-colors cursor-pointer" style={{ fontWeight: 600 }}>
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            {tl.nowLabel} · {minToTimeStr(nowMin)}
+          </button>
+          <span className="text-gray-300 ml-1">·</span>
           <span>{tl.clickHint}</span>
         </div>
       </div>
 
       {/* ── Scrollable area ── */}
-      <div className="flex-1 overflow-auto">
-        <div style={{ width: LABEL_W + TL_WIDTH, minWidth: LABEL_W + TL_WIDTH }}>
+      <div ref={scrollRef} className="flex-1 overflow-auto bg-white relative">
+        <div style={{ width: `${zoom * 100}%`, minWidth: "100%", minHeight: "100%", display: "flex", flexDirection: "column" }}>
 
-          {/* Period band row */}
-          <div className="flex sticky top-0 z-20" style={{ height: BAND_H }}>
-            <div style={{ width: LABEL_W, minWidth: LABEL_W, backgroundColor: "#f8fafc" }} className="border-r border-b border-gray-200 shrink-0" />
-            <div className="relative" style={{ width: TL_WIDTH, height: BAND_H, flexShrink: 0 }}>
+          {/* Sticky Headers Container */}
+          <div className="sticky top-0 flex flex-col shrink-0 z-30 bg-white border-b border-gray-200 drop-shadow-sm">
+
+            {/* Period band row */}
+            <div className="flex w-full" style={{ height: BAND_H }}>
+              <div style={{ width: LABEL_W, minWidth: LABEL_W, backgroundColor: "#f8fafc" }} className="sticky left-0 z-40 border-r border-gray-200 shrink-0 flex-none" />
+              <div className="relative flex-1 min-w-0" style={{ height: BAND_H }}>
               {period === "All" ? (
                 BANDS.map(b => {
-                  const left  = (b.from - START_MIN) * PX_PER_MIN;
-                  const width = (b.to - b.from) * PX_PER_MIN;
+                  const left = minToPct(Math.max(b.from, START_MIN));
+                  const right = minToPct(Math.min(b.to, END_MIN));
+                  const width = Math.max(0, right - left);
+                  if (width <= 0) return null;
+
                   const bandLabel = b.label === "Morning" ? tl.legendMorning : b.label === "Lunch" ? tl.legendLunch : tl.legendEvening;
                   return (
                     <div key={b.label} className="absolute top-0 bottom-0 flex items-center justify-center border-b"
-                      style={{ left, width, backgroundColor: b.bg, borderColor: b.border, borderRight: `1px solid ${b.border}` }}>
+                      style={{ left: `${left}%`, width: `${width}%`, backgroundColor: b.bg, borderColor: b.border, borderRight: `1px solid ${b.border}` }}>
                       <span style={{ fontSize: 10, fontWeight: 700, color: b.text, letterSpacing: "0.04em" }}>
                         {b.label === "Morning" ? "🌅" : b.label === "Lunch" ? "☀️" : "🌙"} {bandLabel}
                       </span>
@@ -407,24 +440,29 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                   );
                 })()
               )}
-              {currentX > 0 && <div className="absolute top-0 bottom-0" style={{ left: currentX, width: 1.5, backgroundColor: "#3b82f6", zIndex: 5 }} />}
+              {currentPct > 0 && <div className="absolute top-0 bottom-0" style={{ left: `${currentPct}%`, width: 1.5, backgroundColor: "#3b82f6", zIndex: 5 }} />}
             </div>
           </div>
 
           {/* Hour header */}
-          <div className="flex sticky bg-white border-b border-gray-200" style={{ top: BAND_H, zIndex: 20, height: HDR_H }}>
-            <div className="sticky left-0 z-30 bg-white border-r border-gray-200 flex items-end pb-1 px-2 shrink-0" style={{ width: LABEL_W }}>
+          <div className="flex w-full bg-white" style={{ height: HDR_H }}>
+            <div className="sticky left-0 z-40 bg-white border-r border-gray-200 flex items-end pb-1 px-2 shrink-0 flex-none" style={{ width: LABEL_W }}>
               <span className="text-gray-400" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sec · T.</span>
             </div>
-            <div className="relative" style={{ width: TL_WIDTH, height: HDR_H, flexShrink: 0 }}>
-              {Array.from({ length: qCount }, (_, i) => (
-                <div key={i} className="absolute top-0 bottom-0" style={{ left: i * 15 * PX_PER_MIN, width: 1, backgroundColor: i % 4 === 0 ? "#e5e7eb" : "#f3f4f6" }} />
-              ))}
-              {currentX > 0 && <div className="absolute top-0 bottom-0" style={{ left: currentX, width: 1.5, backgroundColor: "#3b82f6", zIndex: 5 }} />}
+            <div className="relative flex-1 min-w-0" style={{ height: HDR_H }}>
+              {Array.from({ length: qCount }, (_, i) => {
+                const pct = minToPct(START_MIN + i * 15);
+                return (
+                  <div key={i} className="absolute top-0 bottom-0" style={{ left: `${pct}%`, width: 1, backgroundColor: i % 4 === 0 ? "#e5e7eb" : "#f3f4f6" }} />
+                )
+              })}
+              {currentPct > 0 && <div className="absolute top-0 bottom-0" style={{ left: `${currentPct}%`, width: 1.5, backgroundColor: "#3b82f6", zIndex: 5 }} />}
               {hours.map(h => {
                 if (h === endH) return null;
+                const pct = minToPct(h * 60);
+                const widthPct = (60 / totalMins) * 100;
                 return (
-                  <div key={h} className="absolute flex flex-col justify-end" style={{ left: (h - startH) * PX_PER_HOUR + 3, bottom: 4, width: PX_PER_HOUR - 3 }}>
+                  <div key={h} className="absolute flex flex-col justify-end px-1" style={{ left: `${pct}%`, bottom: 4, width: `${widthPct}%` }}>
                     <span className="text-gray-600" style={{ fontSize: period === "All" ? 11 : 12, fontWeight: 500 }}>
                       {String(h).padStart(2, "0")}:00
                     </span>
@@ -440,35 +478,42 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
               })}
             </div>
           </div>
+        </div>
 
-          {/* Section rows */}
+        {/* Fluid sections container */}
+        <div className="flex-1 flex flex-col">
           {SECTIONS.map(sec => {
             const isColl  = collapsed.has(sec.name);
             const secBks  = ALL_BOOKINGS.filter(b => b.section === sec.name);
             const active  = secBks.filter(b => b.status === "seated" || b.status === "arrived").length;
 
             return (
-              <div key={sec.name}>
+              <div key={sec.name} className="contents">
                 {/* Section header */}
-                <div className="flex border-b border-gray-200" style={{ height: SEC_H, backgroundColor: "#f1f5f9" }}>
+                <div className="flex border-b border-gray-200 shrink-0 w-full sticky" style={{ top: BAND_H + HDR_H, zIndex: 20, height: SEC_H, backgroundColor: "#f1f5f9" }}>
                   <div
-                    className="sticky left-0 z-10 flex items-center gap-1.5 px-2 border-r border-gray-300 cursor-pointer hover:bg-slate-200 transition-colors shrink-0"
+                    className="sticky left-0 z-30 flex justify-between items-center gap-1.5 px-2 border-r border-gray-300 cursor-pointer hover:bg-slate-200 transition-colors shrink-0 flex-none"
                     style={{ width: LABEL_W, backgroundColor: "#e2e8f0" }}
                     onClick={() => toggleSection(sec.name)}
                   >
-                    {isColl ? <ChevronRight size={11} className="text-gray-500" /> : <ChevronDown size={11} className="text-gray-500" />}
-                    <span className="font-semibold text-gray-700 truncate" style={{ fontSize: 10.5 }}>
-                      {tl.sections[sec.name as keyof typeof tl.sections] ?? sec.name}
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {isColl ? <ChevronRight size={11} className="text-gray-500 shrink-0" /> : <ChevronDown size={11} className="text-gray-500 shrink-0" />}
+                      <span className="font-semibold text-gray-700 truncate" style={{ fontSize: 10.5 }}>
+                        {tl.sections[sec.name as keyof typeof tl.sections] ?? sec.name}
+                      </span>
+                    </div>
                     {active > 0 && (
-                      <span className="ml-auto px-1 rounded-full bg-emerald-500 text-white shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>{active}</span>
+                      <span className="px-1 rounded-full bg-emerald-500 text-white shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>{active}</span>
                     )}
                   </div>
-                  <div className="relative" style={{ width: TL_WIDTH, backgroundColor: "#f1f5f9", flexShrink: 0 }}>
-                    {Array.from({ length: qCount }, (_, i) => (
-                      <div key={i} className="absolute top-0 bottom-0" style={{ left: i * 15 * PX_PER_MIN, width: 1, backgroundColor: i % 4 === 0 ? "#cbd5e1" : "#e2e8f0" }} />
-                    ))}
-                    {currentX > 0 && <div className="absolute top-0 bottom-0" style={{ left: currentX, width: 1.5, backgroundColor: "#3b82f6" }} />}
+                  <div className="relative flex-1 min-w-0" style={{ backgroundColor: "#f1f5f9" }}>
+                    {Array.from({ length: qCount }, (_, i) => {
+                      const pct = minToPct(START_MIN + i * 15);
+                      return (
+                        <div key={i} className="absolute top-0 bottom-0" style={{ left: `${pct}%`, width: 1, backgroundColor: i % 4 === 0 ? "#cbd5e1" : "#e2e8f0" }} />
+                      )
+                    })}
+                    {currentPct > 0 && <div className="absolute top-0 bottom-0" style={{ left: `${currentPct}%`, width: 1.5, backgroundColor: "#3b82f6" }} />}
                   </div>
                 </div>
 
@@ -478,56 +523,69 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                   const isEven = i % 2 === 1;
 
                   return (
-                    <div key={tableNum} className="flex border-b border-gray-100" style={{ height: ROW_H }}>
+                    <div key={tableNum} className="flex border-b border-gray-100 flex-1 w-full relative transition-all duration-75" style={{ minHeight: rowHeight }}>
                       {/* Label */}
-                      <div className="sticky left-0 z-10 flex items-center border-r border-gray-200 px-3 shrink-0"
-                        style={{ width: LABEL_W, height: ROW_H, backgroundColor: isEven ? "#f9fafb" : "#ffffff" }}>
+                      <div className="sticky left-0 z-10 flex items-center justify-start border-r border-gray-200 px-3 shrink-0 flex-none"
+                        style={{ width: LABEL_W, backgroundColor: isEven ? "#f9fafb" : "#ffffff" }}>
                         <span className="text-gray-600" style={{ fontSize: 11, fontWeight: 500 }}>T.{tableNum}</span>
                       </div>
 
                       {/* Timeline cell */}
-                      <div className="relative cursor-crosshair"
-                        style={{ width: TL_WIDTH, height: ROW_H, backgroundColor: isEven ? "#f9fafb" : "#ffffff", flexShrink: 0 }}
+                      <div className="relative flex-1 min-w-0 cursor-crosshair overflow-hidden group"
+                        style={{ backgroundColor: isEven ? "#f9fafb" : "#ffffff" }}
                         onClick={e => handleCellClick(e, sec.name, tableNum)}>
                         {/* Grid lines */}
-                        {Array.from({ length: qCount }, (_, qi) => (
-                          <div key={qi} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: qi * 15 * PX_PER_MIN, width: 1, backgroundColor: qi % 4 === 0 ? "#e5e7eb" : "#f3f4f6" }} />
-                        ))}
+                        {Array.from({ length: qCount }, (_, qi) => {
+                          const pct = minToPct(START_MIN + qi * 15);
+                          return (
+                            <div key={qi} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${pct}%`, width: 1, backgroundColor: qi % 4 === 0 ? "#e5e7eb" : "#f3f4f6" }} />
+                          )
+                        })}
                         {/* Past wash */}
-                        {currentX > 0 && <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: 0, width: currentX, backgroundColor: "rgba(0,0,0,0.015)" }} />}
+                        {currentPct > 0 && <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: 0, width: `${currentPct}%`, backgroundColor: "rgba(0,0,0,0.015)" }} />}
                         {/* Current time line */}
-                        {currentX > 0 && <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: currentX, width: 1.5, backgroundColor: "#3b82f6", zIndex: 4, opacity: 0.7 }} />}
+                        {currentPct > 0 && <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${currentPct}%`, width: 1.5, backgroundColor: "#3b82f6", zIndex: 4, opacity: 0.7 }} />}
+                        
+                        {/* Hover Highlight */}
+                        <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/[0.02] pointer-events-none transition-colors" />
 
                         {/* Booking bars */}
                         {rowBks.map(b => {
-                          const startPx = (timeToMin(b.time) - START_MIN) * PX_PER_MIN;
-                          const widthPx = Math.max((timeToMin(b.endTime) - timeToMin(b.time)) * PX_PER_MIN - 2, 16);
+                          const sMin = Math.max(timeToMin(b.time), START_MIN);
+                          const eMin = Math.min(timeToMin(b.endTime), END_MIN);
+                          const startPct = minToPct(sMin);
+                          const widthPct = Math.max((eMin - sMin) / totalMins * 100, 2);
+                          
                           const color   = barColor(b);
                           const light   = STATUS_LIGHT[b.status] ?? color;
                           const searchOp = getOpacity(b);
                           const hi      = isHighlighted(b);
                           const striped = b.status === "waiting" || b.status === "arrived";
-                          const done    = isDoneBooking(b, nowMin, day);
+                          
+                          const timeState = getBookingTimeState(b, nowMin, day);
+                          const isPast    = timeState === "past";
+                          const isCurrent = timeState === "current";
 
                           return (
                             <div key={b.id} className="absolute rounded overflow-hidden"
                               style={{
-                                left: startPx + 1, width: widthPx,
-                                top: 3, height: ROW_H - 6,
-                                opacity: done ? 0.42 : searchOp,
-                                filter: done ? "saturate(0.3) brightness(1.08)" : undefined,
-                                zIndex: hi ? 10 : 3,
+                                left: `calc(${startPct}% + 1px)`, 
+                                width: `calc(${widthPct}% - 2px)`,
+                                top: "4px", bottom: "4px",
+                                opacity: isPast ? 0.45 : searchOp,
+                                filter: isPast ? "saturate(0.3) brightness(1.08)" : undefined,
+                                zIndex: isCurrent ? 15 : hi ? 10 : 3,
                                 background: striped
                                   ? `repeating-linear-gradient(45deg,${color},${color} 5px,${light} 5px,${light} 10px)`
                                   : color,
-                                boxShadow: hi ? `0 0 0 2px white, 0 0 0 3px ${color}` : "none",
+                                boxShadow: isCurrent ? `0 0 0 2px white, 0 0 0 3px ${color}` : hi ? `0 0 0 2px white, 0 0 0 3px ${color}` : "none",
                                 cursor: "pointer",
                                 transition: "opacity 0.15s, filter 0.15s",
                               }}
-                              title={`${b.guestName} · ${b.time}–${b.endTime} · ${b.guests} guests${done ? ` (${tl.completed})` : ""}`}
+                              title={`${b.guestName} · ${b.time}–${b.endTime} · ${b.guests} guests${isPast && b.status === "completed" ? ` (Completed)` : ""}`}
                               onClick={e => { e.stopPropagation(); onBookingClick?.(b.id); }}>
                               <div className="flex items-center justify-between w-full h-full px-1.5 gap-0.5 min-w-0">
-                                <span className="text-white truncate" style={{ fontSize: period === "All" ? 9.5 : 11, fontWeight: 500, lineHeight: 1, textDecorationLine: done ? "line-through" : "none", textDecorationColor: "rgba(255,255,255,0.5)" }}>{b.guestName}</span>
+                                <span className="text-white truncate" style={{ fontSize: period === "All" ? 9.5 : 11, fontWeight: 500, lineHeight: 1, textDecorationLine: isPast && b.status === "completed" ? "line-through" : "none", textDecorationColor: "rgba(255,255,255,0.5)" }}>{b.guestName}</span>
                                 <div className="flex items-center gap-0.5 shrink-0">
                                   {b.hasNote && <MessageSquare size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
                                   {b.hasFile && <FileText size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
@@ -544,8 +602,7 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
               </div>
             );
           })}
-
-          <div style={{ height: 20 }} />
+        </div>
         </div>
       </div>
 

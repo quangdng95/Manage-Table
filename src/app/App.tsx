@@ -12,8 +12,7 @@ import { ListView } from "./components/ListView";
 import { CRMView } from "./components/CRMView";
 import { BookingSettingsDrawer } from "./components/BookingSettingsDrawer";
 import { BookingDetailModal } from "./components/BookingDetailModal";
-import { NewBookingModal } from "./components/NewBookingModal";
-import { WalkInModal } from "./components/WalkInModal";
+import { BookingDrawer } from "./components/BookingDrawer";
 import { UserMenuDropdown } from "./components/UserMenuDropdown";
 import LogoPlaceholder from "../imports/LogoPlaceholder";
 import { SettingsPage, type SettingsView } from "./components/SettingsPage";
@@ -90,22 +89,31 @@ function TopNav({ activeTab, setActiveTab, onProfile, onSettings, hideActiveTab 
 
 interface BookingsHeaderProps {
   liveTime: string;
+  selectedDay: number;
   onNewBooking: () => void;
   onWalkIn: () => void;
 }
-function BookingsHeader({ liveTime, onNewBooking, onWalkIn }: BookingsHeaderProps) {
-  const { t } = useLang();
+function BookingsHeader({ liveTime, selectedDay, onNewBooking, onWalkIn }: BookingsHeaderProps) {
+  const { lang, t } = useLang();
+  
+  const d = new Date();
+  d.setDate(selectedDay);
+  const dateStr = new Intl.DateTimeFormat(lang === "vi" ? "vi-VN" : "en-US", {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+  }).format(d);
+  
+  // Format liveTime cleanly
+  const timeStr = liveTime.match(/^\d+:\d+/) ? liveTime.match(/^\d+:\d+/)?.[0] : liveTime;
+
   return (
-    <div className="flex items-center justify-between border-b border-gray-100 bg-white shrink-0" style={{ height: 52, paddingLeft: 16, paddingRight: 16 }}>
-      <div className="flex items-center gap-3">
-        <div className="flex flex-col">
-          <h1 className="text-gray-900 leading-none" style={{ fontSize: 16, fontWeight: 600 }}>{t.header.dateLabel}</h1>
+    <header className="h-16 flex items-center justify-between px-6 border-b border-gray-100 bg-white">
+      <div className="flex items-center gap-4">
+        <h1 className="text-gray-900 leading-none" style={{ fontSize: 16, fontWeight: 600 }}>{dateStr}</h1>
           <div className="flex items-center gap-1 mt-0.5">
             <Clock size={10} className="text-emerald-500" />
             <span className="text-emerald-600 tabular-nums" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" }}>{liveTime}</span>
             <span className="text-gray-400 ml-1" style={{ fontSize: 10 }}>{t.header.live}</span>
           </div>
-        </div>
         <div className="h-8 w-px bg-gray-100 mx-1" />
         <button
           onClick={onNewBooking}
@@ -122,7 +130,7 @@ function BookingsHeader({ liveTime, onNewBooking, onWalkIn }: BookingsHeaderProp
           <UserPlus size={13} /> {t.header.walkIn}
         </button>
       </div>
-    </div>
+    </header>
   );
 }
 
@@ -192,11 +200,10 @@ function AppInner() {
   const [activeTime,      setActiveTime]      = useState("All");
   const [drawerOpen,      setDrawerOpen]      = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<{ id: number; tab?: string } | null>(null);
-  const [newBookingOpen,  setNewBookingOpen]  = useState(false);
-  const [walkInOpen,      setWalkInOpen]      = useState(false);
-  const [selectedDay,     setSelectedDay]     = useState(23);
-  const [newBookingSlot,  setNewBookingSlot]  = useState<SlotInfo | undefined>(undefined);
-  const [walkInSlot,      setWalkInSlot]      = useState<SlotInfo | undefined>(undefined);
+  const [bookingDrawerOpen, setBookingDrawerOpen] = useState(false);
+  const [bookingDrawerType, setBookingDrawerType] = useState<"walk-in" | "reservation">("reservation");
+  const [bookingDrawerSlot, setBookingDrawerSlot] = useState<SlotInfo | undefined>(undefined);
+  const [selectedDay,     setSelectedDay]     = useState(new Date().getDate());
   const [settingsView,    setSettingsView]    = useState<SettingsView | null>(null);
 
   const [liveTime, setLiveTime] = useState(() => {
@@ -212,8 +219,16 @@ function AppInner() {
 
   function handleBookingClick(id: number) { setSelectedBooking({ id, tab: "overview" }); }
   function handleIconClick(id: number, tab: string) { setSelectedBooking({ id, tab }); }
-  function handleSlotNewBooking(slot: SlotInfo) { setNewBookingSlot(slot); setNewBookingOpen(true); }
-  function handleSlotWalkIn(slot: SlotInfo)     { setWalkInSlot(slot);    setWalkInOpen(true); }
+  function handleSlotNewBooking(slot: SlotInfo) {
+    setBookingDrawerType("reservation");
+    setBookingDrawerSlot(slot);
+    setBookingDrawerOpen(true);
+  }
+  function handleSlotWalkIn(slot: SlotInfo) {
+    setBookingDrawerType("walk-in");
+    setBookingDrawerSlot(slot);
+    setBookingDrawerOpen(true);
+  }
 
   return (
     <div className="flex flex-col bg-white" style={{ height: "100vh", overflow: "hidden", fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -252,7 +267,12 @@ function AppInner() {
             onDaySelect={setSelectedDay}
           />
           <main className="flex flex-col flex-1 overflow-hidden min-h-0 min-w-0 bg-white">
-            <BookingsHeader liveTime={liveTime} onNewBooking={() => { setNewBookingSlot(undefined); setNewBookingOpen(true); }} onWalkIn={() => { setWalkInSlot(undefined); setWalkInOpen(true); }} />
+            <BookingsHeader 
+              liveTime={liveTime} 
+              selectedDay={selectedDay}
+              onNewBooking={() => { setBookingDrawerType("reservation"); setBookingDrawerSlot(undefined); setBookingDrawerOpen(true); }} 
+              onWalkIn={() => { setBookingDrawerType("walk-in"); setBookingDrawerSlot(undefined); setBookingDrawerOpen(true); }} 
+            />
             <ViewControls activeView={activeView} setActiveView={setActiveView} activeTime={activeTime} setActiveTime={setActiveTime} />
             {activeView === "Diagram"   && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} />}
             {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} />}
@@ -264,13 +284,18 @@ function AppInner() {
 
       <BookingSettingsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <BookingDetailModal
+        selectedDay={selectedDay}
         bookingId={selectedBooking?.id ?? null}
         initialTab={(selectedBooking?.tab ?? "overview") as any}
         onClose={() => setSelectedBooking(null)}
         onOpenCRM={() => { setSelectedBooking(null); setActiveTab("CRM"); }}
       />
-      <NewBookingModal open={newBookingOpen} onClose={() => setNewBookingOpen(false)} initialDate={t.header.dateLabel} initialSlot={newBookingSlot} />
-      <WalkInModal    open={walkInOpen}      onClose={() => setWalkInOpen(false)}     initialSlot={walkInSlot} />
+      <BookingDrawer
+        open={bookingDrawerOpen}
+        onClose={() => setBookingDrawerOpen(false)}
+        initialType={bookingDrawerType}
+        initialSlot={bookingDrawerSlot}
+      />
     </div>
   );
 }
