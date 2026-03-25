@@ -600,6 +600,12 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
   const msgCount = (enriched.guestNote ? 1 : 0) + enriched.staffNotes.length;
   const docCount = enriched.documents.length;
 
+  const dNow     = new Date();
+  const nowMins  = dNow.getHours() * 60 + dNow.getMinutes();
+  const currDay  = dNow.getDate();
+  const [eH, eM] = booking.endTime.split(":").map(Number);
+  const isPast   = selectedDay < currDay || (selectedDay === currDay && (eH * 60 + eM) < nowMins);
+
   const statusLabel = (s: Status) => t.status[s as keyof typeof t.status] ?? s;
 
   const TABS: { id: ModalTab; label: string; badge?: number }[] = [
@@ -766,15 +772,16 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
               <div>
                 <div className="text-gray-700 mb-2" style={{ fontSize: 12, fontWeight: 600 }}>{tm.updateStatus}</div>
                 <div className="flex gap-1.5 flex-wrap">
-                  {(["confirmed","arrived","seated","waiting","noshow","cancelled","completed"] as Status[]).map(s => {
-                    const m = STATUS_META[s];
-                    const isActive = s === status;
+                  {(isPast ? ["completed","noshow","cancelled"] : ["confirmed","arrived","seated","waiting","noshow","cancelled","completed"]).map(s => {
+                    const statusKey = s as Status;
+                    const m = STATUS_META[statusKey];
+                    const isActive = statusKey === status;
                     return (
-                      <button key={s} onClick={() => setCurrentStatus(s)}
+                      <button key={s} onClick={() => setCurrentStatus(statusKey)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 transition-all"
                         style={{ borderColor: isActive ? m.dot : "#e5e7eb", backgroundColor: isActive ? m.bg : "white", fontSize: 11, fontWeight: isActive ? 700 : 400, color: isActive ? m.color : "#6b7280" }}>
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.dot }} />
-                        {statusLabel(s)}
+                        {statusLabel(statusKey)}
                         {isActive && <Check size={11} />}
                       </button>
                     );

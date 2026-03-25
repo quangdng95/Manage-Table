@@ -572,15 +572,15 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                                 left: `calc(${startPct}% + 1px)`, 
                                 width: `calc(${widthPct}% - 2px)`,
                                 top: "4px", bottom: "4px",
-                                opacity: isPast ? 0.45 : searchOp,
-                                filter: isPast ? "saturate(0.3) brightness(1.08)" : undefined,
+                                opacity: isPast ? 0.5 : searchOp,
+                                filter: undefined,
                                 zIndex: isCurrent ? 15 : hi ? 10 : 3,
                                 background: striped
                                   ? `repeating-linear-gradient(45deg,${color},${color} 5px,${light} 5px,${light} 10px)`
                                   : color,
                                 boxShadow: isCurrent ? `0 0 0 2px white, 0 0 0 3px ${color}` : hi ? `0 0 0 2px white, 0 0 0 3px ${color}` : "none",
                                 cursor: "pointer",
-                                transition: "opacity 0.15s, filter 0.15s",
+                                transition: "opacity 0.15s, filter 0.15s, background-color 0.15s",
                               }}
                               title={`${b.guestName} · ${b.time}–${b.endTime} · ${b.guests} guests${isPast && b.status === "completed" ? ` (Completed)` : ""}`}
                               onClick={e => { e.stopPropagation(); onBookingClick?.(b.id); }}>

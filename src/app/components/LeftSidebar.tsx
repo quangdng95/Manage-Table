@@ -9,13 +9,12 @@ import type { Lang } from "../i18n/translations";
 import { getBookingsForDay } from "../data/bookings";
 
 // ── March 2026 calendar ───────────────────────────────────────
-const calendarWeeks = [
-  { week: 9,  days: [null, null, null, null, null, null, 1] },
-  { week: 10, days: [2,  3,  4,  5,  6,  7,  8]  },
-  { week: 11, days: [9,  10, 11, 12, 13, 14, 15] },
-  { week: 12, days: [16, 17, 18, 19, 20, 21, 22] },
-  { week: 13, days: [23, 24, 25, 26, 27, 28, 29] },
-  { week: 14, days: [30, 31, null, null, null, null, null] },
+const calendarGrid = [
+  [1, 2, 3, 4, 5, 6, 7],
+  [8, 9, 10, 11, 12, 13, 14],
+  [15, 16, 17, 18, 19, 20, 21],
+  [22, 23, 24, 25, 26, 27, 28],
+  [29, 30, 31, null, null, null, null]
 ];
 
 const TODAY_DAY = new Date().getDate();
@@ -37,78 +36,60 @@ interface SideBooking {
 
 function MiniCalendar({ selectedDay, onDaySelect }: { selectedDay: number; onDaySelect: (d: number) => void }) {
   const { t } = useLang();
-  const eventNightDays = [4, 11, 18];
+
+  // For a minimalist S M T W T F S grid:
+  const dayLabels = ["S", "M", "T", "W", "T", "F", "S"];
 
   return (
-    <div className="px-2 pt-2 pb-1">
-      <div className="flex items-center justify-between mb-1">
-        <button className="px-2 py-0.5 text-gray-600 border border-gray-200 rounded hover:bg-gray-50"
-          style={{ fontSize: 10 }} onClick={() => onDaySelect(TODAY_DAY)}>
-          {t.sidebar.today}
-        </button>
-        <div className="flex items-center gap-1">
-          <button className="p-0.5 text-gray-500 hover:text-gray-700"><ChevronLeft size={14} /></button>
-          <span className="text-gray-700" style={{ fontSize: 11, fontWeight: 600 }}>{t.sidebar.month}</span>
-          <button className="p-0.5 text-gray-500 hover:text-gray-700"><ChevronRight size={14} /></button>
+    <div className="px-3 pt-3 pb-2 border-b border-gray-100">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-gray-800" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.01em" }}>
+          March 2026
+        </span>
+        <div className="flex items-center gap-2">
+          <button className="p-1 rounded-md hover:bg-gray-100 text-gray-500 transition-colors"><ChevronLeft size={16} /></button>
+          <button className="p-1 rounded-md hover:bg-gray-100 text-gray-500 transition-colors"><ChevronRight size={16} /></button>
         </div>
       </div>
 
-      {/* Day-of-week header */}
-      <div className="flex items-center">
-        <div style={{ width: 22, flexShrink: 0 }} />
-        {t.sidebar.dayLabels.map((d, i) => (
-          <div key={i} className="text-center" style={{
-            flex: 1, fontSize: 10, fontWeight: 600,
-            color: i >= 5 ? "#d1d5db" : "#9ca3af",
-          }}>{d}</div>
-        ))}
-      </div>
+      {/* Grid container */}
+      <div className="w-full max-w-[280px] mx-auto">
+        {/* Day-of-week header */}
+        <div className="grid grid-cols-7 mb-2">
+          {dayLabels.map((d, i) => (
+            <div key={i} className="text-center text-gray-400" style={{ fontSize: 12, fontWeight: 600 }}>{d}</div>
+          ))}
+        </div>
 
-      {/* Weeks */}
-      {calendarWeeks.map((week) => (
-        <div key={week.week} className="flex items-center">
-          <div className="text-center text-gray-300" style={{ width: 22, flexShrink: 0, fontSize: 9 }}>{week.week}</div>
-          {week.days.map((day, di) => {
-            const isEvent    = day !== null && eventNightDays.includes(day);
+        {/* Days grid */}
+        <div className="grid grid-cols-7 gap-y-1">
+          {calendarGrid.flat().map((day, i) => {
             const isToday    = day === TODAY_DAY;
             const isSelected = day !== null && day === selectedDay;
-            const isWeekend  = di >= 5;
+            const isWeekend  = i % 7 === 0 || i % 7 === 6;
+
             return (
-              <div
-                key={di}
-                onClick={() => day !== null && onDaySelect(day)}
-                className="relative flex items-center justify-center rounded-full transition-all"
-                style={{
-                  flex: 1, aspectRatio: "1", fontSize: 10,
-                  cursor: day !== null ? "pointer" : "default",
-                  backgroundColor:
-                    isSelected && !isToday ? "#0f766e"
-                    : isEvent             ? "#dcfce7"
-                    : "transparent",
-                  fontWeight: isSelected || isToday ? 700 : 400,
-                  color:
-                    isSelected && !isToday ? "white"
-                    : isToday   ? "#0f766e"
-                    : isEvent   ? "#15803d"
-                    : isWeekend ? "#d1d5db"
-                    : day === null ? "transparent"
-                    : "#374151",
-                  outline: isToday ? "2px solid #10b981" : "none",
-                  outlineOffset: -1,
-                }}
-              >
-                {day ?? ""}
-                {isEvent && !isSelected && (
-                  <span
-                    className="absolute rounded-full bg-emerald-500"
-                    style={{ width: 3, height: 3, bottom: 1, left: "50%", transform: "translateX(-50%)" }}
-                  />
-                )}
+              <div key={i} className="flex justify-center items-center">
+                <div
+                  onClick={() => day !== null && onDaySelect(day)}
+                  className="relative flex items-center justify-center rounded-full transition-all"
+                  style={{
+                    width: 28, height: 28, fontSize: 14, fontWeight: isSelected || isToday ? 700 : 500,
+                    cursor: day !== null ? "pointer" : "default",
+                    backgroundColor: isSelected ? "#2563eb" : "transparent",
+                    color: isSelected ? "white" : day === null ? "transparent" : isWeekend ? "#9ca3af" : "#374151",
+                    outline: isToday && !isSelected ? "2px solid #3b82f6" : "none",
+                    outlineOffset: -2,
+                  }}
+                >
+                  {day ?? ""}
+                </div>
               </div>
             );
           })}
         </div>
-      ))}
+      </div>
 
       {/* Event night legend */}
       <div
@@ -146,9 +127,9 @@ function BookingStatusBar({
   const { t } = useLang();
   return (
     <div className="flex items-center justify-between px-2 py-1.5 border-t border-b border-gray-100 bg-white">
-      <div className="flex items-center gap-1.5">
-        <div className="w-2 h-2 rounded-full bg-emerald-500" />
-        <span style={{ fontSize: 11 }} className="text-gray-700">{t.sidebar.bookingOpen}</span>
+      <div className="flex items-center gap-2">
+        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+        <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }} className="text-gray-800">{t.sidebar.bookingOpen}</span>
       </div>
       <div className="flex items-center gap-1">
         <button
@@ -178,26 +159,26 @@ function StatsPanel({ collapsed }: { collapsed: boolean }) {
     // Compact view: only bookings count, guest count, remaining today
     return (
       <div className="px-2 py-1.5 border-b border-gray-100">
-        <div className="flex gap-3">
+        <div className="flex gap-4">
           {/* Bookings */}
-          <div className="flex items-center gap-1">
-            <Calendar size={11} className="text-gray-400 shrink-0" />
-            <span className="font-semibold text-gray-800" style={{ fontSize: 11 }}>30</span>
-            <span className="text-gray-400" style={{ fontSize: 10 }}>{t.sidebar.bookings}</span>
+          <div className="flex items-center gap-1.5">
+            <Calendar size={14} className="text-gray-400 shrink-0" />
+            <span className="font-semibold text-gray-800" style={{ fontSize: 14, lineHeight: 1.4 }}>30</span>
+            <span className="text-gray-500" style={{ fontSize: 14, lineHeight: 1.4 }}>{t.sidebar.bookings}</span>
           </div>
-          <div className="h-3.5 w-px bg-gray-200 self-center" />
+          <div className="h-4 w-px bg-gray-200 self-center" />
           {/* Guests */}
-          <div className="flex items-center gap-1">
-            <Users size={11} className="text-gray-400 shrink-0" />
-            <span className="font-semibold text-gray-800" style={{ fontSize: 11 }}>86</span>
-            <span className="text-gray-400" style={{ fontSize: 10 }}>{t.sidebar.guests}</span>
+          <div className="flex items-center gap-1.5">
+            <Users size={14} className="text-gray-400 shrink-0" />
+            <span className="font-semibold text-gray-800" style={{ fontSize: 14, lineHeight: 1.4 }}>86</span>
+            <span className="text-gray-500" style={{ fontSize: 14, lineHeight: 1.4 }}>{t.sidebar.guests}</span>
           </div>
         </div>
         {/* Remaining today row */}
-        <div className="flex gap-3 mt-1">
-          <div className="flex items-center gap-1">
-            <Clock size={10} className="text-gray-400 shrink-0" />
-            <span className="text-gray-500" style={{ fontSize: 10 }}>{t.sidebar.remainingToday}: 12 {t.sidebar.bookings.toLowerCase()}, 31 {t.sidebar.guests.toLowerCase()}</span>
+        <div className="flex gap-3 mt-1.5">
+          <div className="flex items-center gap-1.5">
+            <Clock size={12} className="text-gray-400 shrink-0" />
+            <span className="text-gray-500" style={{ fontSize: 13, lineHeight: 1.4 }}>{t.sidebar.remainingToday}: 12 {t.sidebar.bookings.toLowerCase()}, 31 {t.sidebar.guests.toLowerCase()}</span>
           </div>
         </div>
       </div>
@@ -490,9 +471,9 @@ function LangToggle() {
 }
 
 // ── Main export ───────────────────────────────────────────────
-const MIN_WIDTH = 160;
-const MAX_WIDTH = 320;
-const DEFAULT_WIDTH = 210;
+const MIN_WIDTH = 256;
+const MAX_WIDTH = 480;
+const DEFAULT_WIDTH = 256;
 
 export function LeftSidebar({ onOpenSettings, onBookingClick, onIconClick, selectedDay, onDaySelect }: {
   onOpenSettings: () => void;

@@ -165,19 +165,23 @@ export type TimeState = "past" | "current" | "upcoming";
 /** Determines the visual hierarchy state of a booking on the timeline based on its status and time. */
 export function getBookingTimeState(b: Booking, nowMin: number, day: number): TimeState {
   if (b.status === "completed" || b.status === "noshow" || b.status === "cancelled") return "past";
-  if (day < TODAY_DAY) return "past";
-  if (day > TODAY_DAY) return "upcoming";
+  const currentDay = new Date().getDate();
+  if (day < currentDay) return "past";
+  if (day > currentDay) return "upcoming";
 
-  // Seated or arrived guests are always active/current regardless of exact time overlap.
+  const [eh, em] = b.endTime.split(":").map(Number);
+  const endMin = eh * 60 + em;
+  
+  if (endMin < nowMin) {
+    // End time passed completely -> fade away as past
+    return "past";
+  }
+
+  // Active guests (if they haven't finished yet)
   if (b.status === "seated" || b.status === "arrived") return "current";
 
   const [sh, sm] = b.time.split(":").map(Number);
   const startMin = sh * 60 + sm;
-  
-  if (startMin < nowMin) {
-    // Started before now, but not active -> fade away as past
-    return "past";
-  }
   
   // Highlight as "Current" if it starts within the next 30 minutes
   if (startMin - nowMin <= 30 && startMin >= nowMin) {

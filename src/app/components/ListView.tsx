@@ -77,7 +77,7 @@ function duration(start: string, end: string) {
   return (eh * 60 + em) - (sh * 60 + sm);
 }
 
-function BookingRow({ booking, accentColor, onBookingClick, nowMin, day }: { booking: Booking; accentColor: string; onBookingClick?: (id: number) => void; nowMin: number; day: number }) {
+function BookingRow({ booking, accentColor, onBookingClick, onUpdateStatus, nowMin, day }: { booking: Booking; accentColor: string; onBookingClick?: (id: number) => void; onUpdateStatus?: (id: number, status: Status) => void; nowMin: number; day: number }) {
   const [hovered, setHovered] = useState(false);
   const { t } = useLang();
   const tl = t.list;
@@ -151,32 +151,65 @@ function BookingRow({ booking, accentColor, onBookingClick, nowMin, day }: { boo
       <div className="shrink-0 hidden lg:block"><StatusBadge status={booking.status} /></div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1 shrink-0">
-        <button className="text-gray-400 hover:text-gray-600 transition-colors p-0.5" onClick={e => { e.stopPropagation(); onBookingClick?.(booking.id); }}><Settings size={12} /></button>
-        {booking.hasNote && <button className="hover:text-blue-500 transition-colors p-0.5" style={{ color: "#93c5fd" }} onClick={e => { e.stopPropagation(); onBookingClick?.(booking.id); }}><MessageSquare size={12} /></button>}
-        {booking.hasFile && <button className="hover:text-purple-500 transition-colors p-0.5" style={{ color: "#c4b5fd" }} onClick={e => { e.stopPropagation(); onBookingClick?.(booking.id); }}><FileText size={12} /></button>}
+      <div className="flex items-center gap-1 shrink-0 relative w-[110px] justify-end">
+        {hovered && !done ? (
+          <div className="flex gap-1 animate-in fade-in slide-in-from-right-2 bg-white/90 pl-2">
+            {booking.status !== "seated" && <button className="px-2 py-1 rounded bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "seated"); }}>Seat</button>}
+            {booking.status !== "arrived" && booking.status !== "seated" && <button className="px-2 py-1 rounded bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "arrived"); }}>Arrive</button>}
+            {booking.status !== "noshow" && <button className="px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "noshow"); }}>No-show</button>}
+          </div>
+        ) : (
+          <>
+            <button className="text-gray-400 hover:text-gray-600 transition-colors p-0.5" onClick={e => { e.stopPropagation(); onBookingClick?.(booking.id); }}><Settings size={12} /></button>
+            {booking.hasNote && <button className="hover:text-blue-500 transition-colors p-0.5" style={{ color: "#93c5fd" }} onClick={e => { e.stopPropagation(); onBookingClick?.(booking.id); }}><MessageSquare size={12} /></button>}
+            {booking.hasFile && <button className="hover:text-purple-500 transition-colors p-0.5" style={{ color: "#c4b5fd" }} onClick={e => { e.stopPropagation(); onBookingClick?.(booking.id); }}><FileText size={12} /></button>}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 function TimeGroup({
-  timeKey, bookings, accentColor, accentLight, accentMid, textDark, onBookingClick, nowMin, day,
+  timeKey, bookings, accentColor, accentLight, accentMid, textDark, onBookingClick, onUpdateStatus, nowMin, day, collapseTrigger, expandTrigger, setUpcomingRef, isFirstUpcoming,
 }: {
   timeKey: string; bookings: Booking[]; accentColor: string; accentLight: string;
-  accentMid: string; textDark: string; onBookingClick?: (id: number) => void;
-  nowMin: number; day: number;
+  accentMid: string; textDark: string; onBookingClick?: (id: number) => void; onUpdateStatus?: (id: number, status: Status) => void;
+  nowMin: number; day: number; collapseTrigger: number; expandTrigger: number;
+  setUpcomingRef?: (el: HTMLDivElement | null) => void; isFirstUpcoming?: boolean;
 }) {
-  const [open, setOpen] = useState(true);
+  const isGroupPast = useMemo(() => {
+    const [h, m] = timeKey.split(":").map(Number);
+    const groupMin = h * 60 + m;
+    const currentDay = new Date().getDate();
+    if (day < currentDay) return true;
+    if (day > currentDay) return false;
+    return groupMin < nowMin;
+  }, [timeKey, nowMin, day]);
+
+  const [open, setOpen] = useState(!isGroupPast);
+
+  React.useEffect(() => {
+    if (collapseTrigger > 0 && isGroupPast) {
+      setOpen(false);
+    }
+  }, [collapseTrigger, isGroupPast]);
+
+  React.useEffect(() => {
+    if (expandTrigger > 0) {
+      setOpen(true);
+    }
+  }, [expandTrigger]);
+
   const { t } = useLang();
   const totalGuests = bookings.reduce((s, b) => s + b.guests, 0);
 
   return (
-    <div>
+    <div ref={isFirstUpcoming ? setUpcomingRef : undefined}>
       {/* Group header */}
       <button
-        className="w-full flex items-center gap-3 px-4 py-2 border-b border-gray-200 hover:opacity-80 transition-opacity text-left"
-        style={{ backgroundColor: accentMid }}
+        className="w-full flex items-center gap-3 px-4 py-2 border-b border-gray-200 hover:opacity-80 transition-opacity text-left sticky top-[28px] z-10 shadow-sm"
+        style={{ backgroundColor: accentMid, minHeight: 36 }}
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
@@ -186,6 +219,7 @@ function TimeGroup({
         )}
         <span className="font-bold" style={{ fontSize: 13, color: textDark, fontVariantNumeric: "tabular-nums" }}>
           {timeKey}
+          {isGroupPast && <span className="font-normal opacity-70 ml-1">(Past)</span>}
         </span>
         <span
           className="px-2 py-0.5 rounded-full text-white"
@@ -215,9 +249,9 @@ function TimeGroup({
 
       {/* Booking rows */}
       {open && (
-        <div>
+        <div className="relative z-0">
           {bookings.map((b) => (
-            <BookingRow key={b.id} booking={b} accentColor={accentColor} onBookingClick={onBookingClick} nowMin={nowMin} day={day} />
+            <BookingRow key={b.id} booking={b} accentColor={accentColor} onBookingClick={onBookingClick} onUpdateStatus={onUpdateStatus} nowMin={nowMin} day={day} />
           ))}
         </div>
       )}
@@ -229,6 +263,10 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [sectionFilter, setSectionFilter] = useState<string>("All");
+  const [collapseTrigger, setCollapseTrigger] = useState(0);
+  const [expandTrigger, setExpandTrigger] = useState(0);
+  const upcomingRef = React.useRef<HTMLDivElement | null>(null);
+  
   const { t } = useLang();
   const tl = t.list;
 
@@ -280,6 +318,23 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
+  // Identify first upcoming group hook
+  const firstUpcomingIndex = useMemo(() => {
+    const currentDay = new Date().getDate();
+    return groups.findIndex(([timeKey]) => {
+      if (day < currentDay) return false;
+      if (day > currentDay) return true;
+      const [h, m] = timeKey.split(":").map(Number);
+      return (h * 60 + m) >= nowMin;
+    });
+  }, [groups, nowMin, day]);
+
+  const handleScrollToUpcoming = () => {
+    if (upcomingRef.current) {
+      upcomingRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   // Stats
   const totalGuests = source.reduce((s, b) => s + b.guests, 0);
   const avgParty = source.length > 0 ? (totalGuests / source.length).toFixed(1) : "0";
@@ -299,8 +354,8 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
           {/* Title */}
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm"
-              style={{ backgroundColor: theme.accent }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm text-white"
+              style={{ backgroundColor: theme.accent, color: "#FFFFFF" }}
             >
               <PeriodIcon period={period} size={18} />
             </div>
@@ -373,16 +428,42 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
           <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
         </div>
 
+        {/* Action Buttons */}
+        <div className="flex gap-2 ml-auto">
+          <button
+            onClick={() => setCollapseTrigger(v => v + 1)}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
+            style={{ fontSize: 11, fontWeight: 500 }}
+          >
+            Collapse Past
+          </button>
+          <button
+            onClick={() => setExpandTrigger(v => v + 1)}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
+            style={{ fontSize: 11, fontWeight: 500 }}
+          >
+            Expand All
+          </button>
+          <button
+            onClick={handleScrollToUpcoming}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
+            style={{ fontSize: 11, fontWeight: 500 }}
+          >
+            <SortAsc size={13} className="text-emerald-500" />
+            Jump to Now
+          </button>
+        </div>
+
         {/* Result count */}
-        <span className="text-gray-400 ml-auto" style={{ fontSize: 11 }}>
+        <span className="text-gray-400 ml-2" style={{ fontSize: 11 }}>
           {filtered.length} {tl.statBookings.toLowerCase()}
         </span>
       </div>
 
       {/* ── Table Header ── */}
       <div
-        className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-200 sticky top-0 z-10"
-        style={{ backgroundColor: "#f1f5f9" }}
+        className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-200 sticky top-0 z-20"
+        style={{ backgroundColor: "#f1f5f9", minHeight: 28 }}
       >
         <div style={{ width: 3, flexShrink: 0 }} />
         <div style={{ width: 34, flexShrink: 0 }} />
@@ -403,13 +484,16 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
         </div>
       ) : (
         <div className="bg-white">
-          {groups.map(([timeKey, bks]) => (
+          {groups.map(([timeKey, bks], index) => (
             <TimeGroup
               key={timeKey} timeKey={timeKey} bookings={bks}
               accentColor={theme.accent} accentLight={theme.accentLight}
               accentMid={theme.accentMid} textDark={theme.textDark}
               onBookingClick={onBookingClick}
-              nowMin={nowMin} day={day}
+              onUpdateStatus={(id, status) => { console.log(`Quick action: Update booking ${id} to ${status}`); }}
+              nowMin={nowMin} day={day} collapseTrigger={collapseTrigger} expandTrigger={expandTrigger}
+              isFirstUpcoming={index === firstUpcomingIndex}
+              setUpcomingRef={(el) => { if (index === firstUpcomingIndex) upcomingRef.current = el; }}
             />
           ))}
         </div>
