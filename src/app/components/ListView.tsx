@@ -8,10 +8,12 @@ import {
 import { getBookingsForDay, getBookingTimeState, PERIOD_THEMES, STATUS_META, type Booking, type Status } from "../data/bookings";
 import { useLang } from "../context/LanguageContext";
 
-interface ListViewProps {
+export interface ListViewProps {
   period: string;
   day: number;
   onBookingClick?: (id: number) => void;
+  onUpdateStatus?: (id: number, status: Status) => void;
+  forceRender?: number;
 }
 
 const AVATAR_PALETTE = [
@@ -154,9 +156,21 @@ function BookingRow({ booking, accentColor, onBookingClick, onUpdateStatus, nowM
       <div className="flex items-center gap-1 shrink-0 relative w-[110px] justify-end">
         {hovered && !done ? (
           <div className="flex gap-1 animate-in fade-in slide-in-from-right-2 bg-white/90 pl-2">
-            {booking.status !== "seated" && <button className="px-2 py-1 rounded bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "seated"); }}>Seat</button>}
-            {booking.status !== "arrived" && booking.status !== "seated" && <button className="px-2 py-1 rounded bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "arrived"); }}>Arrive</button>}
-            {booking.status !== "noshow" && <button className="px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "noshow"); }}>No-show</button>}
+            {booking.status === "awaitingconfirm" && (
+              <>
+                <button className="px-2 py-1 rounded bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "reserved"); }}>Arrive</button>
+                <button className="px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "noshow"); }}>No-show</button>
+              </>
+            )}
+            {(booking.status === "reserved" || booking.status === "waitingpayment") && (
+              <>
+                <button className="px-2 py-1 rounded bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "seated"); }}>Seat</button>
+                <button className="px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "noshow"); }}>No-show</button>
+              </>
+            )}
+            {booking.status === "seated" && (
+              <button className="px-2 py-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors shadow-sm" style={{ fontSize: 10, fontWeight: 700 }} onClick={e => { e.stopPropagation(); onUpdateStatus?.(booking.id, "completed"); }}>Complete</button>
+            )}
           </div>
         ) : (
           <>
@@ -259,7 +273,7 @@ function TimeGroup({
   );
 }
 
-export function ListView({ period, day, onBookingClick }: ListViewProps) {
+export function ListView({ period, day, onBookingClick, onUpdateStatus, forceRender }: ListViewProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [sectionFilter, setSectionFilter] = useState<string>("All");
@@ -285,10 +299,10 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
   const source = period === "All" ? dayBookings : dayBookings.filter((b) => b.period === periodKey);
 
   // Use translated status options for filtering, map back to English value
-  const statusOptionKeys = ["All", "seated", "arrived", "confirmed", "waiting", "noshow"] as const;
+  const statusOptionKeys = ["All", "seated", "reserved", "awaitingconfirm", "waitingpayment", "noshow", "cancelled", "completed"] as const;
   const statusOptionLabels = [
-    tl.statusOptions[0], // "All" / "Tất cả"
-    t.status.seated, t.status.arrived, t.status.confirmed, t.status.waiting, t.status.noshow,
+    tl.statusOptions[0] ?? "All",
+    ...statusOptionKeys.slice(1).map(k => STATUS_META[k as keyof typeof STATUS_META]?.label ?? k),
   ];
 
   const sectionOptionKeys = ["All", "Restaurant", "First floor", "Terrace", "Bar"];
@@ -420,7 +434,7 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
             value={sectionFilter}
             onChange={(e) => {
               const idx = sectionOptionLabels.indexOf(e.target.value);
-              setSectionFilter(idx > 0 ? sectionOptionKeys[idx] : "All");
+              setSectionFilter(idx > 0 ? (sectionOptionKeys[idx] as any) : "All");
             }}
           >
             {sectionOptionLabels.map((label, i) => <option key={i} value={label}>{label}</option>)}
@@ -490,7 +504,7 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
               accentColor={theme.accent} accentLight={theme.accentLight}
               accentMid={theme.accentMid} textDark={theme.textDark}
               onBookingClick={onBookingClick}
-              onUpdateStatus={(id, status) => { console.log(`Quick action: Update booking ${id} to ${status}`); }}
+              onUpdateStatus={onUpdateStatus}
               nowMin={nowMin} day={day} collapseTrigger={collapseTrigger} expandTrigger={expandTrigger}
               isFirstUpcoming={index === firstUpcomingIndex}
               setUpcomingRef={(el) => { if (index === firstUpcomingIndex) upcomingRef.current = el; }}
@@ -505,7 +519,7 @@ export function ListView({ period, day, onBookingClick }: ListViewProps) {
         style={{ backgroundColor: theme.accentLight }}
       >
         <div className="flex items-center gap-4">
-          {(["seated", "arrived", "confirmed", "waiting", "noshow"] as Status[]).map((s) => {
+          {(["seated", "reserved", "awaitingconfirm", "waitingpayment", "noshow"] as Status[]).map((s) => {
             const count = source.filter((b) => b.status === s).length;
             if (!count) return null;
             const meta = STATUS_META[s];

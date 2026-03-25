@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X, Users, MapPin, Clock, Calendar, MessageSquare,
   FileText, Settings, Phone, Mail, ExternalLink,
@@ -71,7 +71,7 @@ function buildFallbackEnriched(b: typeof ALL_BOOKINGS[0]): BookingEnriched {
     guestNote: b.tags.length > 0 ? `Guest has the following preferences: ${b.tags.join(", ")}.` : "",
     staffNotes: b.status === "noshow"
       ? [{ author: "Reception", time: b.time, text: `Guest did not arrive at ${b.time}. Booking marked as no-show.` }]
-      : b.status === "arrived"
+      : b.status === "reserved"
       ? [{ author: "Host", time: b.time, text: `Guest arrived at ${b.time}. Seated at ${b.section} T.${b.table}.` }]
       : [],
     documents: [],
@@ -95,7 +95,7 @@ function durationMins(t1: string, t2: string) {
   return (h2 * 60 + m2) - (h1 * 60 + m1);
 }
 
-const STATUS_FLOW: Status[] = ["confirmed", "arrived", "seated", "noshow"];
+const STATUS_FLOW: Status[] = ["awaitingconfirm", "reserved", "seated", "waitingpayment", "completed"];
 
 // ── Sub-components ────────────────────────────────────────────
 
@@ -343,16 +343,22 @@ function NoteItem({ note, todayLabel }: { note: StaffNote; todayLabel: string })
   );
 }
 
-// ── Edit Tab ──────────────────────────────────────────────────
-function EditTab({ booking, enriched, selectedDay, onClose }: {
+// ── Unified Overview & Edit Tab ─────────────────────────────────
+function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM, onStatusChange, currentStatus, setCurrentStatus }: {
   booking: typeof ALL_BOOKINGS[0];
-  enriched: { phone: string; email: string; guestNote: string };
+  enriched: BookingEnriched;
   selectedDay: number;
   onClose: () => void;
+  onOpenCRM?: (name: string) => void;
+  onStatusChange?: (id: number, status: Status) => void;
+  currentStatus: Status | null;
+  setCurrentStatus: (s: Status) => void;
 }) {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const te = t.edit;
+  const tm = t.modal;
 
+  const [,            setTick]        = useState(0);
   const [name,        setName]        = useState(booking.guestName);
   const [phone,       setPhone]       = useState(enriched.phone);
   const [email,       setEmail]       = useState(enriched.email);
@@ -364,7 +370,34 @@ function EditTab({ booking, enriched, selectedDay, onClose }: {
   const [deposit,     setDeposit]     = useState("");
   const [request,     setRequest]     = useState(enriched.guestNote);
   const [saved,       setSaved]       = useState(false);
-  const [notifyGuest, setNotifyGuest] = useState(true);
+  const [notifyGuest, setNotifyGuest] = useState(false);
+
+  useEffect(() => {
+    if (time !== booking.time || endTime !== booking.endTime || guests !== String(booking.guests)) {
+      setNotifyGuest(true);
+    } else {
+      setNotifyGuest(false);
+    }
+  }, [time, endTime, guests, booking]);
+
+  const handleTimeInput = (val: string, setter: (v: string) => void) => {
+    const raw = val.replace(/\D/g, "").slice(0, 4);
+    if (raw.length >= 3) {
+      setter(`${raw.slice(0,2)}:${raw.slice(2)}`);
+    } else {
+      setter(raw);
+    }
+  };
+
+  const handleTimeBlur = (val: string, setter: (v: string) => void) => {
+    if (val.length === 4 && !val.includes(":")) {
+      setter(`${val.slice(0,2)}:${val.slice(2)}`);
+    }
+  };
+
+  const status = currentStatus ?? booking.status;
+  const color = avatarColor(booking.guestName);
+  const statusLabel = (s: Status) => t.status[s as keyof typeof t.status] ?? s;
 
   // Determine if booking is in the past
   const now = new Date();
@@ -394,7 +427,48 @@ function EditTab({ booking, enriched, selectedDay, onClose }: {
   const inputStyle = { fontSize: 12 };
 
   return (
-    <div className="p-5 space-y-5">
+    <div className="p-5 space-y-6">
+
+      {/* ── Tags ── */}
+      {booking.tags.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 600 }}>{tm.bookingTags}</span>
+            <div className="group relative cursor-help">
+              <Info size={12} className="text-gray-400" />
+              <div className="absolute bottom-5 left-0 hidden group-hover:block bg-gray-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">{tm.tagsHint}</div>
+            </div>
+          </div>
+          <div className="space-y-2">{booking.tags.map(tag => <TagCard key={tag} label={tag} />)}</div>
+        </div>
+      )}
+
+      {/* ── Status buttons ── */}
+      <div>
+        <div className="text-gray-700 mb-2" style={{ fontSize: 12, fontWeight: 600 }}>{tm.updateStatus}</div>
+        <div className="flex gap-1.5 flex-wrap">
+          {(isPast ? ["completed","noshow","cancelled"] : ["awaitingconfirm","reserved","seated","waitingpayment","noshow","cancelled","completed"]).map(s => {
+            const statusKey = s as Status;
+            const m = STATUS_META[statusKey];
+            const isActive = statusKey === status;
+            return (
+              <button key={s} onClick={() => {
+                  setCurrentStatus(statusKey);
+                  if (onStatusChange && booking) onStatusChange(booking.id, statusKey);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 transition-all"
+                style={{ borderColor: isActive ? m.dot : "#e5e7eb", backgroundColor: isActive ? m.bg : "white", fontSize: 11, fontWeight: isActive ? 700 : 400, color: isActive ? m.color : "#6b7280" }}>
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.dot }} />
+                {statusLabel(statusKey)}
+                {isActive && <Check size={11} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100" />
+
       {/* Save success / Past warning banners */}
       {isPast && (
         <div className="flex items-center gap-2 p-3 rounded-xl bg-orange-50 border border-orange-200">
@@ -451,11 +525,17 @@ function EditTab({ booking, enriched, selectedDay, onClose }: {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Field label={te.time} value={time} isPastMode={isPast}>
-            <input type="time" value={time} onChange={e => setTime(e.target.value)}
+            <input type="text" value={time} 
+              onChange={e => handleTimeInput(e.target.value, setTime)} 
+              onBlur={() => handleTimeBlur(time, setTime)}
+              placeholder="HH:MM" maxLength={5}
               className={inputCls} style={inputStyle} />
           </Field>
           <Field label={te.endTime} value={endTime} isPastMode={isPast}>
-            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
+            <input type="text" value={endTime} 
+              onChange={e => handleTimeInput(e.target.value, setEndTime)} 
+              onBlur={() => handleTimeBlur(endTime, setEndTime)}
+              placeholder="HH:MM" maxLength={5}
               className={inputCls} style={inputStyle} />
           </Field>
           <Field label={te.guests} value={guests ? `${guests} ${t.modal.guestSuffix ?? "khách"}` : ""} isPastMode={isPast}>
@@ -479,17 +559,73 @@ function EditTab({ booking, enriched, selectedDay, onClose }: {
                 style={{ fontSize: 16 }}>+</button>
             </div>
           </Field>
-          <Field label={te.section} value={section} isPastMode={isPast}>
-            <select value={section} onChange={e => setSection(e.target.value)}
-              className={inputCls} style={inputStyle}>
-              {["Restaurant","First floor","Terrace","Bar","Private room"].map(s =>
-                <option key={s} value={s}>{s}</option>)}
-            </select>
-          </Field>
-          <Field label={te.table} value={table} isPastMode={isPast}>
-            <input value={table} onChange={e => setTable(e.target.value)}
-              className={inputCls} style={inputStyle} placeholder={te.tablePlaceholder} />
-          </Field>
+          {/* Table Allocation (Multi-table UI) */}
+          <div className="col-span-2 md:col-span-3 mt-1">
+            <label className="block text-gray-500 mb-2" style={{ fontSize: 11, fontWeight: 600 }}>CẤP BÀN (TABLE ALLOCATION)</label>
+            {isPast ? (
+              <div className="flex flex-wrap gap-2 text-gray-900 font-medium py-1.5" style={{ fontSize: 13 }}>
+                <span className="px-2 py-1 bg-gray-100 rounded-lg">{booking.section} T.{booking.table}</span>
+                {booking.additionalTables?.map((t, i) => (
+                  <span key={i} className="px-2 py-1 bg-gray-100 rounded-lg">{t.section} T.{t.table}</span>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Primary Table */}
+                <div className="flex items-center gap-2">
+                  <select value={section} onChange={e => { setSection(e.target.value); booking.section = e.target.value as any; }}
+                    className={inputCls} style={{ ...inputStyle, width: "160px" }}>
+                    {["Restaurant","First floor","Terrace","Bar","Private room"].map(s =>
+                      <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <input value={table} onChange={e => { setTable(e.target.value); booking.table = Number(e.target.value); }}
+                    className={inputCls} style={{ ...inputStyle, width: "80px" }} placeholder={te.tablePlaceholder} />
+                  <span className="text-gray-400" style={{ fontSize: 11 }}>(Bàn chính)</span>
+                </div>
+                
+                {/* Additional Tables */}
+                {booking.additionalTables?.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <select value={t.section} onChange={e => { 
+                        const newArr = [...(booking.additionalTables || [])];
+                        newArr[i].section = e.target.value as any;
+                        booking.additionalTables = newArr;
+                        setTick(v => v + 1);
+                      }}
+                      className={inputCls} style={{ ...inputStyle, width: "160px" }}>
+                      {["Restaurant","First floor","Terrace","Bar","Private room"].map(s =>
+                        <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <input type="number" value={String(t.table)} onChange={e => { 
+                        const newArr = [...(booking.additionalTables || [])];
+                        newArr[i].table = Number(e.target.value);
+                        booking.additionalTables = newArr;
+                        setTick(v => v + 1);
+                      }}
+                      className={inputCls} style={{ ...inputStyle, width: "80px" }} placeholder={te.tablePlaceholder} />
+                    <button onClick={() => {
+                        const newArr = [...(booking.additionalTables || [])];
+                        newArr.splice(i, 1);
+                        booking.additionalTables = newArr;
+                        setTick(v => v + 1);
+                      }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors" title="Xoá bàn">
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                
+                <button onClick={() => {
+                    if (!booking.additionalTables) booking.additionalTables = [];
+                    booking.additionalTables.push({ section: section as any, table: Number(table) + 1 });
+                    setTick(v => v + 1);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 transition-colors mt-2" style={{ fontSize: 11, fontWeight: 600 }}>
+                  <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> Thêm bàn ghép (Linked Table)
+                </button>
+              </div>
+            )}
+          </div>
           <Field label={te.deposit} value={deposit ? `${parseInt(deposit).toLocaleString()} ₫` : ""} isPastMode={isPast}>
             <input value={deposit} onChange={e => setDeposit(e.target.value)}
               className={inputCls} style={inputStyle} placeholder={te.depositPlaceholder} />
@@ -568,14 +704,15 @@ function EditTab({ booking, enriched, selectedDay, onClose }: {
 
 interface BookingDetailModalProps {
   bookingId: number | null;
-  initialTab?: "overview" | "messages" | "documents" | "edit";
+  initialTab?: "overview" | "messages" | "documents";
   selectedDay: number;
   onClose: () => void;
   onOpenCRM?: (name: string) => void;
+  onStatusChange?: (id: number, status: Status) => void;
 }
-type ModalTab = "overview" | "messages" | "documents" | "edit";
+type ModalTab = "overview" | "messages" | "documents";
 
-export function BookingDetailModal({ bookingId, initialTab = "overview", selectedDay, onClose, onOpenCRM }: BookingDetailModalProps) {
+export function BookingDetailModal({ bookingId, initialTab = "overview", selectedDay, onClose, onOpenCRM, onStatusChange }: BookingDetailModalProps) {
   const [activeTab,     setActiveTab]     = useState<ModalTab>(initialTab);
   const [currentStatus, setCurrentStatus] = useState<Status | null>(null);
   const [newNote,       setNewNote]       = useState("");
@@ -612,7 +749,6 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
     { id: "overview",  label: tm.tabOverview  },
     { id: "messages",  label: tm.tabMessages,  badge: msgCount },
     { id: "documents", label: tm.tabDocuments, badge: docCount },
-    { id: "edit",      label: tm.tabEdit      },
   ];
 
   const isOpen = bookingId !== null;
@@ -665,7 +801,7 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
 
           {/* Lifecycle bar */}
           <div className="flex items-center gap-1 mt-3">
-            {(["confirmed","arrived","seated"] as Status[]).map((s, i) => {
+            {(["awaitingconfirm","reserved","seated","waitingpayment","completed"] as Status[]).map((s, i) => {
               const m = STATUS_META[s];
               const isActive = s === status;
               const isPast   = STATUS_FLOW.indexOf(s) < STATUS_FLOW.indexOf(status);
@@ -685,7 +821,7 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
                       {statusLabel(s)}
                     </span>
                   </div>
-                  {i < 2 && <ArrowRight size={10} className="text-gray-300 shrink-0" />}
+                  {i < 4 && <ArrowRight size={10} className="text-gray-300 shrink-0" />}
                 </React.Fragment>
               );
             })}
@@ -723,72 +859,16 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
 
           {/* ═══ OVERVIEW ═══ */}
           {activeTab === "overview" && (
-            <div className="p-5 space-y-4">
-
-              {/* Guest profile */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-gray-100 bg-gray-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0"
-                    style={{ backgroundColor: color, fontSize: 13, fontWeight: 700 }}>{initials(booking.guestName)}</div>
-                  <div>
-                    <div className="text-gray-800" style={{ fontSize: 13, fontWeight: 600 }}>{booking.guestName}</div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <a href={`mailto:${enriched.email}`} className="flex items-center gap-1 text-gray-500 hover:text-gray-700 transition-colors" style={{ fontSize: 11 }}>
-                        <Mail size={10} />{enriched.email || "—"}
-                      </a>
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="flex items-center gap-1 text-gray-500" style={{ fontSize: 11 }}>
-                        <Phone size={10} />{enriched.phone || "—"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-gray-700" style={{ fontSize: 13, fontWeight: 600 }}>{enriched.crm.visits} {tm.visitsSuffix}</div>
-                  <div className="text-gray-500" style={{ fontSize: 11 }}>{enriched.crm.totalSpent.toLocaleString("vi-VN")}₫ {tm.totalLabel}</div>
-                  <button onClick={() => onOpenCRM?.(booking.guestName)}
-                    className="flex items-center gap-1 text-emerald-600 hover:text-emerald-800 mt-1 transition-colors ml-auto" style={{ fontSize: 11 }}>
-                    {tm.crmProfile} <ExternalLink size={10} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Tags */}
-              {booking.tags.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <span className="text-gray-700" style={{ fontSize: 12, fontWeight: 600 }}>{tm.bookingTags}</span>
-                    <div className="group relative cursor-help">
-                      <Info size={12} className="text-gray-400" />
-                      <div className="absolute bottom-5 left-0 hidden group-hover:block bg-gray-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">{tm.tagsHint}</div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">{booking.tags.map(tag => <TagCard key={tag} label={tag} />)}</div>
-                </div>
-              )}
-
-              {/* Status buttons */}
-              <div>
-                <div className="text-gray-700 mb-2" style={{ fontSize: 12, fontWeight: 600 }}>{tm.updateStatus}</div>
-                <div className="flex gap-1.5 flex-wrap">
-                  {(isPast ? ["completed","noshow","cancelled"] : ["confirmed","arrived","seated","waiting","noshow","cancelled","completed"]).map(s => {
-                    const statusKey = s as Status;
-                    const m = STATUS_META[statusKey];
-                    const isActive = statusKey === status;
-                    return (
-                      <button key={s} onClick={() => setCurrentStatus(statusKey)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 transition-all"
-                        style={{ borderColor: isActive ? m.dot : "#e5e7eb", backgroundColor: isActive ? m.bg : "white", fontSize: 11, fontWeight: isActive ? 700 : 400, color: isActive ? m.color : "#6b7280" }}>
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.dot }} />
-                        {statusLabel(statusKey)}
-                        {isActive && <Check size={11} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            <UnifiedOverviewTab 
+                booking={booking} 
+                enriched={enriched} 
+                selectedDay={selectedDay} 
+                onClose={onClose} 
+                onOpenCRM={onOpenCRM}
+                onStatusChange={onStatusChange}
+                currentStatus={currentStatus}
+                setCurrentStatus={setCurrentStatus}
+            />
           )}
 
           {/* ═══ MESSAGES ═══ */}
@@ -907,10 +987,7 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
             </div>
           )}
 
-          {/* ═══ EDIT ═══ */}
-          {activeTab === "edit" && (
-            <EditTab booking={booking} enriched={enriched} selectedDay={selectedDay} onClose={onClose} />
-          )}
+
         </div>
       </div>
       {/* Document preview overlay */}

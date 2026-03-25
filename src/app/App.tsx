@@ -13,6 +13,7 @@ import { CRMView } from "./components/CRMView";
 import { BookingSettingsDrawer } from "./components/BookingSettingsDrawer";
 import { BookingDetailModal } from "./components/BookingDetailModal";
 import { BookingDrawer } from "./components/BookingDrawer";
+import { updateBookingStatus, type Status } from "./data/bookings";
 import { UserMenuDropdown } from "./components/UserMenuDropdown";
 import LogoPlaceholder from "../imports/LogoPlaceholder";
 import { SettingsPage, type SettingsView } from "./components/SettingsPage";
@@ -205,6 +206,7 @@ function AppInner() {
   const [bookingDrawerSlot, setBookingDrawerSlot] = useState<SlotInfo | undefined>(undefined);
   const [selectedDay,     setSelectedDay]     = useState(new Date().getDate());
   const [settingsView,    setSettingsView]    = useState<SettingsView | null>(null);
+  const [forceRender,     setForceRender]     = useState(0);
 
   const [liveTime, setLiveTime] = useState(() => {
     const now = new Date();
@@ -228,6 +230,10 @@ function AppInner() {
     setBookingDrawerType("walk-in");
     setBookingDrawerSlot(slot);
     setBookingDrawerOpen(true);
+  }
+  function handleUpdateStatus(id: number, status: Status) {
+    updateBookingStatus(id, status, selectedDay);
+    setForceRender(v => v + 1);
   }
 
   return (
@@ -274,9 +280,9 @@ function AppInner() {
               onWalkIn={() => { setBookingDrawerType("walk-in"); setBookingDrawerSlot(undefined); setBookingDrawerOpen(true); }} 
             />
             <ViewControls activeView={activeView} setActiveView={setActiveView} activeTime={activeTime} setActiveTime={setActiveTime} />
-            {activeView === "Diagram"   && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} />}
-            {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} />}
-            {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} />}
+            {activeView === "Diagram"   && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} />}
+            {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onUpdateStatus={handleUpdateStatus} forceRender={forceRender} />}
+            {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} onWalkinRequest={(tableNum, section, time) => { setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: section as any, table: tableNum, timeSlot: time }); setBookingDrawerOpen(true); }} />}
           </main>
         </div>
       )}
@@ -289,6 +295,7 @@ function AppInner() {
         initialTab={(selectedBooking?.tab ?? "overview") as any}
         onClose={() => setSelectedBooking(null)}
         onOpenCRM={() => { setSelectedBooking(null); setActiveTab("CRM"); }}
+        onStatusChange={handleUpdateStatus}
       />
       <BookingDrawer
         open={bookingDrawerOpen}

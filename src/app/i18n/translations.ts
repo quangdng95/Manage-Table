@@ -73,7 +73,7 @@ const T = {
       legendLunch:       "Lunch",
       legendEvening:     "Evening",
       legendNoShow:      "No-show",
-      completed:         "completed",
+      completed:         "Completed",
       serviceLabel: {
         Morning: "Morning service · 07:00 – 12:00 · 3× zoom",
         Lunch:   "Lunch service · 12:00 – 17:00 · 3× zoom",

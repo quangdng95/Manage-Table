@@ -3,7 +3,7 @@ import {
   Search, X, MessageSquare, FileText,
   ChevronDown, ChevronRight, Plus, Zap, Info, Clock,
 } from "lucide-react";
-import { ALL_BOOKINGS, getBookingsForDay, getBookingTimeState, type Booking } from "../data/bookings";
+import { ALL_BOOKINGS, STATUS_META, getBookingsForDay, getBookingTimeState, type Booking } from "../data/bookings";
 import { useLang } from "../context/LanguageContext";
 
 // ── Layout constants ─────────────────────────────────────────
@@ -234,10 +234,11 @@ interface TimelineProps {
   onBookingClick?: (id: number) => void;
   onSlotNewBooking?: (slot: SlotInfo) => void;
   onSlotWalkIn?: (slot: SlotInfo) => void;
+  forceRender?: number;
 }
 
 // ── Main component ────────────────────────────────────────────
-export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlotWalkIn }: TimelineProps) {
+export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlotWalkIn, forceRender }: TimelineProps) {
   const { t } = useLang();
   const tl = t.timeline;
   const ts = t.slot;
@@ -246,7 +247,45 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
   const [popup,     setPopup]     = useState<SlotPopupData | null>(null);
   const [zoom,      setZoom]      = useState(1);
   const [rowHeight, setRowHeight] = useState(28);
+  const [,          setTick]      = useState(0);
+  const [hoveredId, setHoveredId] = useState<number|null>(null);
   const scrollRef                 = useRef<HTMLDivElement>(null);
+  const gridRef                   = useRef<HTMLDivElement>(null);
+
+  // Drag to resize state
+  const [dragState, setDragState] = useState<{ id: number; field: "time"|"endTime"; originalMins: number; startX: number; pointerId: number } | null>(null);
+  const [dragDelta, setDragDelta] = useState(0);
+
+  function handleHandlePointerDown(e: React.PointerEvent, id: number, field: "time"|"endTime", startMins: number) {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragState({ id, field, originalMins: startMins, startX: e.clientX, pointerId: e.pointerId });
+    setDragDelta(0);
+  }
+  function handleHandlePointerMove(e: React.PointerEvent) {
+    if (!dragState || !gridRef.current) return;
+    const gridW = gridRef.current.getBoundingClientRect().width;
+    const pxDelta = e.clientX - dragState.startX;
+    const minsDeltaRaw = (pxDelta / gridW) * totalMins;
+    setDragDelta(Math.round(minsDeltaRaw / 15) * 15);
+  }
+  function handleHandlePointerUp(e: React.PointerEvent) {
+    if (!dragState) return;
+    e.currentTarget.releasePointerCapture(dragState.pointerId);
+    const b = ALL_BOOKINGS.find(x => x.id === dragState.id);
+    if (b && dragDelta !== 0) {
+      const newMins = dragState.originalMins + dragDelta;
+      const h = Math.floor(Math.max(0, newMins) / 60);
+      const m = Math.max(0, newMins) % 60;
+      b[dragState.field] = `${String(Math.min(23, h)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      if (b.status === "completed" && dragDelta > 0) {
+        b.status = "seated";
+      }
+      setTick(v => v + 1);
+    }
+    setDragState(null);
+    setDragDelta(0);
+  }
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -364,17 +403,10 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
 
         {/* Legend — status based */}
         <div className="flex items-center gap-3 flex-wrap">
-          {([
-            { label: "Confirmed", color: STATUS_COLOR.confirmed },
-            { label: "Arrived",   color: STATUS_COLOR.arrived   },
-            { label: "Seated",    color: STATUS_COLOR.seated    },
-            { label: "Waiting",   color: STATUS_COLOR.waiting   },
-            { label: "No-show",   color: STATUS_COLOR.noshow    },
-            { label: "Cancelled", color: STATUS_COLOR.cancelled },
-          ] as const).map(({ label, color }) => (
-            <div key={label} className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
-              <span className="text-gray-500" style={{ fontSize: 10 }}>{label}</span>
+          {(["awaitingconfirm","reserved","seated","waitingpayment","completed","noshow","cancelled"] as const).map(s => (
+            <div key={s} className="flex items-center gap-1">
+              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: STATUS_META[s].dot }} />
+              <span className="text-gray-500" style={{ fontSize: 10 }}>{STATUS_META[s].label}</span>
             </div>
           ))}
         </div>
@@ -481,11 +513,11 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
         </div>
 
         {/* Fluid sections container */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col" ref={gridRef}>
           {SECTIONS.map(sec => {
             const isColl  = collapsed.has(sec.name);
             const secBks  = ALL_BOOKINGS.filter(b => b.section === sec.name);
-            const active  = secBks.filter(b => b.status === "seated" || b.status === "arrived").length;
+            const active  = secBks.filter(b => b.status === "seated" || b.status === "reserved").length;
 
             return (
               <div key={sec.name} className="contents">
@@ -519,7 +551,10 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
 
                 {/* Table rows */}
                 {!isColl && sec.tables.map((tableNum, i) => {
-                  const rowBks = visibleBookings.filter(b => b.section === sec.name && b.table === tableNum);
+                  const rowBks = visibleBookings.filter(b => 
+                    (b.section === sec.name && b.table === tableNum) ||
+                    b.additionalTables?.some(t => t.section === sec.name && t.table === tableNum)
+                  );
                   const isEven = i % 2 === 1;
 
                   return (
@@ -533,7 +568,31 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                       {/* Timeline cell */}
                       <div className="relative flex-1 min-w-0 cursor-crosshair overflow-hidden group"
                         style={{ backgroundColor: isEven ? "#f9fafb" : "#ffffff" }}
-                        onClick={e => handleCellClick(e, sec.name, tableNum)}>
+                        onClick={e => handleCellClick(e, sec.name, tableNum)}
+                        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                        onDrop={e => {
+                          e.preventDefault();
+                          const rawData = e.dataTransfer.getData("application/booking-move");
+                          if (rawData) {
+                            try {
+                              const data = JSON.parse(rawData);
+                              const { id, sourceSec, sourceTab } = data;
+                              const b = ALL_BOOKINGS.find(x => x.id === id);
+                              if (b) {
+                                if (b.section === sourceSec && b.table === sourceTab) {
+                                  b.section = sec.name as any;
+                                  b.table = tableNum;
+                                } else if (b.additionalTables) {
+                                  const idx = b.additionalTables.findIndex(t => t.section === sourceSec && t.table === sourceTab);
+                                  if (idx >= 0) {
+                                    b.additionalTables[idx] = { section: sec.name as any, table: tableNum };
+                                  }
+                                }
+                                setTick(v => v + 1);
+                              }
+                            } catch (err) {}
+                          }
+                        }}>
                         {/* Grid lines */}
                         {Array.from({ length: qCount }, (_, qi) => {
                           const pct = minToPct(START_MIN + qi * 15);
@@ -551,46 +610,94 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
 
                         {/* Booking bars */}
                         {rowBks.map(b => {
-                          const sMin = Math.max(timeToMin(b.time), START_MIN);
-                          const eMin = Math.min(timeToMin(b.endTime), END_MIN);
-                          const startPct = minToPct(sMin);
-                          const widthPct = Math.max((eMin - sMin) / totalMins * 100, 2);
+                          const baseSMin = timeToMin(b.time);
+                          const baseEMin = timeToMin(b.endTime);
+                          
+                          let effectiveSMin = Math.max(baseSMin, START_MIN);
+                          let effectiveEMin = Math.min(baseEMin, END_MIN);
+                          
+                          if (dragState && dragState.id === b.id) {
+                            if (dragState.field === "time") effectiveSMin = Math.max(baseSMin + dragDelta, START_MIN);
+                            if (dragState.field === "endTime") effectiveEMin = Math.min(baseEMin + dragDelta, END_MIN);
+                          }
+
+                          const startPct = minToPct(effectiveSMin);
+                          const widthPct = Math.max((effectiveEMin - effectiveSMin) / totalMins * 100, 2);
                           
                           const color   = barColor(b);
                           const light   = STATUS_LIGHT[b.status] ?? color;
                           const searchOp = getOpacity(b);
                           const hi      = isHighlighted(b);
-                          const striped = b.status === "waiting" || b.status === "arrived";
+                          const striped = b.status === "waitingpayment" || b.status === "reserved";
                           
                           const timeState = getBookingTimeState(b, nowMin, day);
                           const isPast    = timeState === "past";
                           const isCurrent = timeState === "current";
 
+                          const isLinkedGroup = b.additionalTables && b.additionalTables.length > 0;
+                          const isHoveredLinked = hoveredId === b.id && isLinkedGroup;
+
                           return (
-                            <div key={b.id} className="absolute rounded overflow-hidden"
+                            <div key={`${b.id}-${sec.name}-${tableNum}`} className="absolute rounded overflow-hidden group/booking"
+                              draggable={true}
+                              onDragStart={e => {
+                                if (dragState) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                e.dataTransfer.setData("application/booking-move", JSON.stringify({ id: b.id, sourceSec: sec.name, sourceTab: tableNum }));
+                                e.dataTransfer.effectAllowed = "move";
+                              }}
+                              onPointerEnter={() => setHoveredId(b.id)}
+                              onPointerLeave={() => setHoveredId(null)}
                               style={{
                                 left: `calc(${startPct}% + 1px)`, 
                                 width: `calc(${widthPct}% - 2px)`,
                                 top: "4px", bottom: "4px",
                                 opacity: isPast ? 0.5 : searchOp,
                                 filter: undefined,
-                                zIndex: isCurrent ? 15 : hi ? 10 : 3,
+                                zIndex: isCurrent || isHoveredLinked ? 15 : hi ? 10 : 3,
                                 background: striped
                                   ? `repeating-linear-gradient(45deg,${color},${color} 5px,${light} 5px,${light} 10px)`
                                   : color,
-                                boxShadow: isCurrent ? `0 0 0 2px white, 0 0 0 3px ${color}` : hi ? `0 0 0 2px white, 0 0 0 3px ${color}` : "none",
+                                boxShadow: isCurrent ? `0 0 0 2px white, 0 0 0 3px ${color}` : (hi || isHoveredLinked) ? `0 0 0 2px white, 0 0 0 3px ${color}` : "none",
                                 cursor: "pointer",
-                                transition: "opacity 0.15s, filter 0.15s, background-color 0.15s",
+                                transition: dragState?.id === b.id ? "none" : "left 0.1s, width 0.1s, opacity 0.15s, background-color 0.15s, box-shadow 0.15s",
                               }}
-                              title={`${b.guestName} · ${b.time}–${b.endTime} · ${b.guests} guests${isPast && b.status === "completed" ? ` (Completed)` : ""}`}
+                              title={`${b.guestName} · ${b.time}–${b.endTime} · ${b.guests} guests${isLinkedGroup ? ` · Merged Tables` : ""}${isPast && b.status === "completed" ? ` (Completed)` : ""}`}
                               onClick={e => { e.stopPropagation(); onBookingClick?.(b.id); }}>
-                              <div className="flex items-center justify-between w-full h-full px-1.5 gap-0.5 min-w-0">
+                              
+                              {/* Left Resize Handle */}
+                              <div
+                                className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover/booking:opacity-100 hover:bg-white/30 z-20 flex items-center justify-center transition-opacity"
+                                onPointerDown={(e) => handleHandlePointerDown(e, b.id, "time", timeToMin(b.time))}
+                                onPointerMove={handleHandlePointerMove}
+                                onPointerUp={handleHandlePointerUp}
+                              >
+                                <div className="w-[2px] h-3 bg-white/70 rounded-full" />
+                              </div>
+
+                              <div className="flex items-center justify-center w-full h-full px-2.5 gap-0.5 min-w-0 pointer-events-none">
                                 <span className="text-white truncate" style={{ fontSize: period === "All" ? 9.5 : 11, fontWeight: 500, lineHeight: 1, textDecorationLine: isPast && b.status === "completed" ? "line-through" : "none", textDecorationColor: "rgba(255,255,255,0.5)" }}>{b.guestName}</span>
-                                <div className="flex items-center gap-0.5 shrink-0">
+                                {isLinkedGroup && (
+                                  <div className="ml-1 px-1 rounded bg-white/30 text-white shrink-0" style={{ fontSize: 8.5, fontWeight: 700, paddingBottom: 1 }}>Linked</div>
+                                )}
+                                <div className="flex items-center gap-0.5 shrink-0 ml-auto mr-1">
                                   {b.hasNote && <MessageSquare size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
                                   {b.hasFile && <FileText size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
-                                  <span className="text-white/80" style={{ fontSize: period === "All" ? 8.5 : 10 }}>{b.guests}</span>
+                                  <span className="text-white/80 ml-0.5" style={{ fontSize: period === "All" ? 8.5 : 10 }}>{b.guests}</span>
                                 </div>
+                              </div>
+                              
+                              {/* Right Resize Handle */}
+                              <div
+                                className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover/booking:opacity-100 hover:bg-white/30 z-20 flex items-center justify-center transition-opacity"
+                                onPointerDown={(e) => handleHandlePointerDown(e, b.id, "endTime", timeToMin(b.endTime))}
+                                onPointerMove={handleHandlePointerMove}
+                                onPointerUp={handleHandlePointerUp}
+                                onPointerLeave={handleHandlePointerUp}
+                              >
+                                <div className="w-[2px] h-3 bg-white/70 rounded-full" />
                               </div>
                             </div>
                           );
