@@ -226,6 +226,7 @@ export interface SlotInfo {
   section: string;
   table: number;
   timeSlot: string;
+  additionalTables?: { section: string; table: number }[];
 }
 
 interface TimelineProps {

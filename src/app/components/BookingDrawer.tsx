@@ -59,7 +59,7 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
   const [guests,   setGuests]   = useState(2);
   const [duration, setDuration] = useState(type === "walk-in" ? 90 : 120);
   const [section,  setSection]  = useState("Restaurant");
-  const [table,    setTable]    = useState<number | null>(null);
+  const [selectedTables, setSelectedTables] = useState<{section: string; table: number}[]>([]);
 
   // ── L2: Guest Details & Extras ──
   const [name,  setName]  = useState("");
@@ -96,7 +96,14 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
       }
       
       if (initialSlot?.section) setSection(initialSlot.section);
-      if (initialSlot?.table)   setTable(initialSlot.table ?? null);
+      if (initialSlot?.table) {
+        setSelectedTables([
+          { section: initialSlot.section, table: initialSlot.table },
+          ...(initialSlot.additionalTables || [])
+        ]);
+      } else {
+        setSelectedTables([]);
+      }
 
       // Reset others
       setGuests(2);
@@ -116,14 +123,15 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
 
   useEffect(() => {
     // If table selected is no longer free, clear selection
-    if (table !== null && !availableTables.includes(table)) {
-      setTable(null);
+    if (selectedTables.length > 0) {
+      const stillFree = selectedTables.filter(st => isTableFree(st.section, st.table, startMin, duration));
+      if (stillFree.length !== selectedTables.length) setSelectedTables(stillFree);
     }
-  }, [availableTables, table]);
+  }, [availableTables, selectedTables, startMin, duration]);
 
   // Auto-assign logic
   function autoAssign() {
-    if (availableTables.length > 0) setTable(availableTables[0]);
+    if (availableTables.length > 0) setSelectedTables([{ section, table: availableTables[0] }]);
   }
 
   function handleSave() {
@@ -134,7 +142,7 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
     }, 1800);
   }
 
-  const canSubmit = table !== null && guests > 0 && time !== "";
+  const canSubmit = selectedTables.length > 0 && guests > 0 && time !== "";
 
   // ── Form Components ──
   const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -241,7 +249,7 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
                     <div className="flex flex-col gap-3">
                       <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar w-full">
                         {SECTIONS.map(s => (
-                          <button key={s} onClick={() => { setSection(s); setTable(null); }}
+                          <button key={s} onClick={() => { setSection(s); }}
                             className={`flex-1 min-w-[80px] shrink-0 px-3 py-2 rounded-lg border transition-colors`}
                             style={{ fontSize: 12, fontWeight: section === s ? 600 : 500, borderColor: section === s ? "#d1d5db" : "transparent", backgroundColor: section === s ? "#f3f4f6" : "transparent", color: section === s ? "#111827" : "#6b7280" }}
                           >
@@ -258,9 +266,16 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
                         </button>
                         {TABLE_RANGES[section].map(t => {
                           const free = availableTables.includes(t);
-                          const active = table === t;
+                          const active = selectedTables.some(st => st.section === section && st.table === t);
                           return (
-                            <button key={t} onClick={() => free && setTable(active ? null : t)} disabled={!free}
+                            <button key={t} onClick={() => {
+                               if (free) {
+                                 setSelectedTables(prev => active 
+                                   ? prev.filter(st => !(st.section === section && st.table === t))
+                                   : [...prev, { section, table: t }]
+                                 );
+                               }
+                            }} disabled={!free}
                               className={`w-[52px] py-2.5 rounded-xl border flex flex-col items-center justify-center transition-all ${!free ? "opacity-30 cursor-not-allowed bg-gray-100 border-gray-200" : active ? "bg-emerald-500 border-emerald-600 text-white shadow-sm" : "bg-white border-gray-200 hover:border-emerald-300 hover:bg-emerald-50 text-gray-700"}`}
                             >
                               <span style={{ fontSize: 13, fontWeight: 700 }}>T.{t}</span>
@@ -268,6 +283,11 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
                           );
                         })}
                       </div>
+                      {selectedTables.length > 0 && (
+                        <div className="text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg" style={{ fontSize: 12, fontWeight: 600 }}>
+                          {selectedTables.length} table(s) selected: {selectedTables.map(st => `T.${st.table}`).join(", ")}
+                        </div>
+                      )}
                     </div>
                   </Field>
                 </div>
@@ -368,7 +388,7 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot }: Booki
               </h2>
               <p className="text-gray-500 mb-6" style={{ fontSize: 14, lineHeight: 1.5 }}>
                 {name || "Walk-in Guest"} · {guests} guests<br />
-                {time} · {duration} min · T.{table}
+                {time} · {duration} min · {selectedTables.length > 0 ? `T.${selectedTables[0].table}` + (selectedTables.length > 1 ? ` (+${selectedTables.length - 1} more)` : "") : "No table"}
               </p>
             </div>
           )}

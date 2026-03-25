@@ -343,6 +343,25 @@ function NoteItem({ note, todayLabel }: { note: StaffNote; todayLabel: string })
   );
 }
 
+const Field = ({ label, children, value, isPastMode }: { label: string; children?: React.ReactNode; value?: string; isPastMode?: boolean }) => (
+  <div>
+    <label className="block text-gray-500 mb-1" style={{ fontSize: 11, fontWeight: 600 }}>{label}</label>
+    {isPastMode ? (
+      <div className="text-gray-900 font-medium py-1.5" style={{ fontSize: 13 }}>{value || "—"}</div>
+    ) : (
+      children
+    )}
+  </div>
+);
+
+const TABLE_RANGES: Record<string, number[]> = {
+  "Restaurant":  [1,2,3,4,5,6,7,8,9,10,11],
+  "First floor": [1,2,3,4,5,6,7,8,9,10],
+  "Terrace":     [1,2,3,4,5],
+  "Bar":         [1,2,3,4,5,6,7,8],
+  "Private room":[1,2,3]
+};
+
 // ── Unified Overview & Edit Tab ─────────────────────────────────
 function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM, onStatusChange, currentStatus, setCurrentStatus }: {
   booking: typeof ALL_BOOKINGS[0];
@@ -365,8 +384,8 @@ function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM
   const [guests,      setGuests]      = useState(String(booking.guests));
   const [time,        setTime]        = useState(booking.time);
   const [endTime,     setEndTime]     = useState(booking.endTime);
-  const [table,       setTable]       = useState(String(booking.table));
   const [section,     setSection]     = useState<string>(booking.section);
+  const [selectedTables, setSelectedTables] = useState<{section: string, table: number}[]>([{section: booking.section, table: booking.table}, ...(booking.additionalTables || [])]);
   const [deposit,     setDeposit]     = useState("");
   const [request,     setRequest]     = useState(enriched.guestNote);
   const [saved,       setSaved]       = useState(false);
@@ -412,16 +431,7 @@ function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const Field = ({ label, children, value, isPastMode }: { label: string; children?: React.ReactNode; value?: string; isPastMode?: boolean }) => (
-    <div>
-      <label className="block text-gray-500 mb-1" style={{ fontSize: 11, fontWeight: 600 }}>{label}</label>
-      {isPastMode ? (
-        <div className="text-gray-900 font-medium py-1.5" style={{ fontSize: 13 }}>{value || "—"}</div>
-      ) : (
-        children
-      )}
-    </div>
-  );
+
 
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-gray-800 focus:outline-none focus:border-emerald-400 bg-white transition-colors disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed";
   const inputStyle = { fontSize: 12 };
@@ -570,59 +580,54 @@ function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM
                 ))}
               </div>
             ) : (
-              <div className="space-y-2">
-                {/* Primary Table */}
-                <div className="flex items-center gap-2">
-                  <select value={section} onChange={e => { setSection(e.target.value); booking.section = e.target.value as any; }}
-                    className={inputCls} style={{ ...inputStyle, width: "160px" }}>
-                    {["Restaurant","First floor","Terrace","Bar","Private room"].map(s =>
-                      <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <input value={table} onChange={e => { setTable(e.target.value); booking.table = Number(e.target.value); }}
-                    className={inputCls} style={{ ...inputStyle, width: "80px" }} placeholder={te.tablePlaceholder} />
-                  <span className="text-gray-400" style={{ fontSize: 11 }}>(Bàn chính)</span>
-                </div>
-                
-                {/* Additional Tables */}
-                {booking.additionalTables?.map((t, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <select value={t.section} onChange={e => { 
-                        const newArr = [...(booking.additionalTables || [])];
-                        newArr[i].section = e.target.value as any;
-                        booking.additionalTables = newArr;
-                        setTick(v => v + 1);
-                      }}
-                      className={inputCls} style={{ ...inputStyle, width: "160px" }}>
-                      {["Restaurant","First floor","Terrace","Bar","Private room"].map(s =>
-                        <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <input type="number" value={String(t.table)} onChange={e => { 
-                        const newArr = [...(booking.additionalTables || [])];
-                        newArr[i].table = Number(e.target.value);
-                        booking.additionalTables = newArr;
-                        setTick(v => v + 1);
-                      }}
-                      className={inputCls} style={{ ...inputStyle, width: "80px" }} placeholder={te.tablePlaceholder} />
-                    <button onClick={() => {
-                        const newArr = [...(booking.additionalTables || [])];
-                        newArr.splice(i, 1);
-                        booking.additionalTables = newArr;
-                        setTick(v => v + 1);
-                      }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors" title="Xoá bàn">
-                      ✕
-                    </button>
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar w-full">
+                    {Object.keys(TABLE_RANGES).map(s => (
+                      <button key={s} onClick={() => setSection(s)}
+                        className={`flex-1 min-w-[80px] shrink-0 px-3 py-2 rounded-lg border transition-colors`}
+                        style={{ fontSize: 12, fontWeight: section === s ? 600 : 500, borderColor: section === s ? "#d1d5db" : "transparent", backgroundColor: section === s ? "#f3f4f6" : "transparent", color: section === s ? "#111827" : "#6b7280" }}
+                      >
+                        {s}
+                      </button>
+                    ))}
                   </div>
-                ))}
-                
-                <button onClick={() => {
-                    if (!booking.additionalTables) booking.additionalTables = [];
-                    booking.additionalTables.push({ section: section as any, table: Number(table) + 1 });
-                    setTick(v => v + 1);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-500 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 transition-colors mt-2" style={{ fontSize: 11, fontWeight: 600 }}>
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> Thêm bàn ghép (Linked Table)
-                </button>
+                  
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-wrap gap-2">
+                    {TABLE_RANGES[section]?.map(t => {
+                      const active = selectedTables.some(st => st.section === section && st.table === t);
+                      return (
+                        <button key={t} onClick={() => {
+                          setSelectedTables(prev => {
+                            const next = active 
+                              ? prev.filter(st => !(st.section === section && st.table === t))
+                              : [...prev, { section, table: t }];
+                            
+                            // Immediately update booking source of truth
+                            if (next.length > 0) {
+                                booking.section = next[0].section as any; // Cast as any or Section
+                                booking.table = next[0].table;
+                                booking.additionalTables = next.length > 1 ? next.slice(1).map(n => ({ section: n.section as any, table: n.table })) : undefined;
+                            } else {
+                                booking.additionalTables = undefined;
+                            }
+                            setTick(v => v + 1);
+                            return next;
+                          });
+                        }}
+                          className={`w-[52px] py-2.5 rounded-xl border flex flex-col items-center justify-center transition-all ${active ? "bg-emerald-500 border-emerald-600 text-white shadow-sm" : "bg-white border-gray-200 hover:border-emerald-300 hover:bg-emerald-50 text-gray-700"}`}
+                        >
+                          <span style={{ fontSize: 13, fontWeight: 700 }}>T.{t}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedTables.length > 0 && (
+                    <div className="text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg flex items-center justify-between" style={{ fontSize: 12, fontWeight: 600 }}>
+                      <span>{selectedTables.length} table(s) selected: {selectedTables.map(st => `T.${st.table}`).join(", ")}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

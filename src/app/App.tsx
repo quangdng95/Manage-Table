@@ -282,7 +282,7 @@ function AppInner() {
             <ViewControls activeView={activeView} setActiveView={setActiveView} activeTime={activeTime} setActiveTime={setActiveTime} />
             {activeView === "Diagram"   && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} />}
             {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onUpdateStatus={handleUpdateStatus} forceRender={forceRender} />}
-            {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} onWalkinRequest={(tableNum, section, time) => { setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: section as any, table: tableNum, timeSlot: time }); setBookingDrawerOpen(true); }} />}
+            {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} onWalkinRequest={(tables, time) => { if(!tables.length) return; setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: tables[0].section as any, table: tables[0].table, additionalTables: tables.length > 1 ? tables.slice(1).map(t=>({section: t.section as any, table: t.table})) : undefined, timeSlot: time }); setBookingDrawerOpen(true); }} />}
           </main>
         </div>
       )}

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Users, Plus, Clock, X } from "lucide-react";
+import { Users, Plus, Clock, X, MousePointer2 } from "lucide-react";
 import {
   ALL_BOOKINGS, STATUS_META, getBookingsForDay,
   type Booking, type Section, type Status,
@@ -165,11 +165,11 @@ function getActiveBooking(def: TableDef, day: number, atMin: number): Booking|un
 }
 
 // ── FloorTable ────────────────────────────────────────────────────
-function FloorTable({ def, booking, nowMin, dragTarget,
+function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
   onClickEmpty, onClickBooking, onDragStart, onDrop, onDragOver,
 }: {
-  def: TableDef; booking?: Booking; nowMin: number; dragTarget: boolean;
-  onClickEmpty: (d: TableDef) => void; onClickBooking: (id: number) => void;
+  def: TableDef; booking?: Booking; nowMin: number; dragTarget: boolean; selected?: boolean;
+  onClickEmpty: (d: TableDef, e: React.MouseEvent) => void; onClickBooking: (id: number) => void;
   onDragStart: (bId:number,dId:string)=>void; onDrop:(dId:string)=>void; onDragOver:(e:React.DragEvent)=>void;
 }) {
   const isEmpty  = !booking;
@@ -185,13 +185,15 @@ function FloorTable({ def, booking, nowMin, dragTarget,
   const isLate   = !isEmpty && booking!.status==="awaitingconfirm" && minsToStart < 0;
   const isSoon   = !isEmpty && booking!.status==="awaitingconfirm" && minsToStart>=0 && minsToStart<=20;
 
-  const borderColor = dragTarget ? "#3b82f6" : isEmpty ? "#e5e7eb" : fillDot;
-  const borderW     = dragTarget ? 3 : isEmpty ? 1.5 : 2;
+  const borderColor = selected ? "#10b981" : dragTarget ? "#3b82f6" : isEmpty ? "#e5e7eb" : fillDot;
+  const borderW     = selected ? 3 : dragTarget ? 3 : isEmpty ? 1.5 : 2;
+  const actualBg    = selected ? "#ecfdf5" : fillBg;
+  const actualText  = selected ? "#047857" : fillText;
 
   const initials = booking ? booking.guestName.split(" ").map(p=>p[0]).join("").slice(0,2).toUpperCase() : null;
 
   // Chair color: muted status color for occupied, slate for empty
-  const chairColor = isEmpty ? "#cbd5e1" : fillDot;
+  const chairColor = isEmpty ? (selected ? "#10b981" : "#cbd5e1") : fillDot;
 
   return (
     <div style={{ position:"absolute", left:def.x, top:def.y, width:def.w, height:def.h, transition:"opacity 0.2s" }}
@@ -217,10 +219,10 @@ function FloorTable({ def, booking, nowMin, dragTarget,
         className="select-none flex flex-col items-center justify-center transition-all duration-150 group"
         draggable={!isEmpty}
         onDragStart={e => { if (booking) { e.dataTransfer.setData("text/plain",""); onDragStart(booking.id, def.id); } }}
-        onClick={() => isEmpty ? onClickEmpty(def) : onClickBooking(booking!.id)}
+        onClick={(e) => isEmpty ? onClickEmpty(def, e) : onClickBooking(booking!.id)}
         style={{
           width:def.w, height:def.h, position:"relative",
-          backgroundColor: isEmpty ? "white" : fillBg,
+          backgroundColor: isEmpty ? (selected ? actualBg : "white") : actualBg,
           border:`${borderW}px solid ${borderColor}`,
           borderRadius: def.shape==="circle"?"50%":def.shape==="rect"?"10px":"0",
           clipPath: def.shape==="octagon" ? OCTAGON : undefined,
@@ -234,18 +236,18 @@ function FloorTable({ def, booking, nowMin, dragTarget,
           : `T.${def.number} — Available (${def.capacity} seats)`}
       >
         {/* Table number */}
-        <span style={{ color:fillText, fontSize:def.w<75?13:def.w>130?20:16, fontWeight:800, lineHeight:1 }}>
+        <span style={{ color:actualText, fontSize:def.w<75?13:def.w>130?20:16, fontWeight:800, lineHeight:1 }}>
           {def.number}
         </span>
 
         {/* Guest info */}
         {!isEmpty && booking && (
           <>
-            <div style={{ color:fillText, fontSize:def.w<75?8:10, fontWeight:600, marginTop:2, opacity:0.88,
+            <div style={{ color:actualText, fontSize:def.w<75?8:10, fontWeight:600, marginTop:2, opacity:0.88,
               maxWidth:def.w-10, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textAlign:"center", paddingInline:4 }}>
               {def.w<82 ? initials : booking.guestName.split(" ")[0]}
             </div>
-            <div style={{ color:fillText, fontSize:def.w<75?7.5:9, display:"flex", alignItems:"center", gap:2, marginTop:2, opacity:0.65 }}>
+            <div style={{ color:actualText, fontSize:def.w<75?7.5:9, display:"flex", alignItems:"center", gap:2, marginTop:2, opacity:0.65 }}>
               <Users size={def.w<75?7:8} />
               <span>{booking.guests}/{def.capacity}</span>
               <span style={{ opacity:0.5 }}>·</span>
@@ -337,7 +339,7 @@ interface TableplanProps {
   period: string;
   day: number;
   onBookingClick?: (id: number) => void;
-  onWalkinRequest?: (tableNum: number, section: Section, time: string) => void;
+  onWalkinRequest?: (tables: { section: Section, table: number }[], time: string) => void;
   forceRender?: number;
 }
 
@@ -351,6 +353,9 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
   const [dragOverId, setDragOverId] = useState<string|null>(null);
   const [unlinkedGroups, setUnlinkedGroups] = useState<Set<string>>(new Set());
   const [, setTick] = useState(0);
+
+  const [selectedEmptyTables, setSelectedEmptyTables] = useState<TableDef[]>([]);
+  const [isMultiSelecting, setIsMultiSelecting] = useState(false);
 
   const atMin = sliderMin;
   const isAll = areaFilter === "All";
@@ -376,13 +381,49 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
 
   const visibleGroups = useMemo(() => {
     const g: Record<string,TableDef[]> = {};
+    
+    // 1. Static physical linked groups from layout
     for (const d of visibleDefs) {
       if (d.linkedGroup && !unlinkedGroups.has(d.linkedGroup)) {
         g[d.linkedGroup]??=[]; g[d.linkedGroup].push(d);
       }
     }
+    
+    // 2. Dynamic groups from active bookings sharing tables
+    const activeBookingIds = new Set<number>();
+    for (const d of visibleDefs) {
+      const b = tableBookings[d.id];
+      if (b && b.additionalTables && b.additionalTables.length > 0) {
+        if (!unlinkedGroups.has(`booking-${b.id}`)) {
+          activeBookingIds.add(b.id);
+        }
+      }
+    }
+    
+    for (const bId of activeBookingIds) {
+      const b = ALL_BOOKINGS.find(x => x.id === bId);
+      if (!b) continue;
+      
+      const parts = [
+        { section: b.section, table: b.table },
+        ...(b.additionalTables || [])
+      ];
+      
+      const groupDefs: TableDef[] = [];
+      for (const p of parts) {
+        const matchingDef = visibleDefs.find(vd => vd.section === p.section && vd.number === p.table);
+        if (matchingDef) groupDefs.push(matchingDef);
+      }
+      
+      if (groupDefs.length > 1) {
+        const groupId = `booking-${b.id}`;
+        // Tag the first element so LinkedBox can access the generated groupId
+        g[groupId] = groupDefs.map((def, idx) => idx === 0 ? { ...def, linkedGroup: groupId } : def);
+      }
+    }
+    
     return g;
-  }, [visibleDefs, unlinkedGroups]);
+  }, [visibleDefs, unlinkedGroups, tableBookings]);
 
   function handleDrop(toId: string) {
     const fromB = dragFromId ? tableBookings[dragFromId] : null;
@@ -452,6 +493,16 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
 
         <div className="w-px h-5 bg-gray-200 shrink-0" />
 
+        {/* Multi-select toggle */}
+        <button onClick={() => { setIsMultiSelecting(!isMultiSelecting); setSelectedEmptyTables([]); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${isMultiSelecting ? "bg-emerald-50 border-emerald-300 text-emerald-700 shadow-sm" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+          style={{ fontSize: 11.5, fontWeight: 600 }}>
+          <MousePointer2 size={14} />
+          {isMultiSelecting ? "Selecting..." : "Select Tables"}
+        </button>
+
+        <div className="w-px h-5 bg-gray-200 shrink-0" />
+
         {/* Quick stats */}
         <div className="flex items-center gap-3">
           <span style={{ fontSize:11,fontWeight:600,color:"#0e7490" }}>{occupied} occupied</span>
@@ -482,9 +533,23 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
           ))}
 
           {/* Linked group overlays */}
-          {Object.values(visibleGroups).map((grp,i)=>(
-            <LinkedBox key={i} defs={grp} onUnlink={() => setUnlinkedGroups(prev => new Set(prev).add(grp[0].linkedGroup!))} />
-          ))}
+          {Object.values(visibleGroups).map((grp,i) => {
+            const groupId = grp[0].linkedGroup!;
+            return (
+              <LinkedBox key={i} defs={grp} onUnlink={() => {
+                if (groupId.startsWith('booking-')) {
+                  const bId = Number(groupId.replace('booking-', ''));
+                  const b = ALL_BOOKINGS.find(x => x.id === bId);
+                  if (b) {
+                    delete b.additionalTables;
+                    setTick(v => v + 1);
+                  }
+                } else {
+                  setUnlinkedGroups(prev => new Set(prev).add(groupId));
+                }
+              }} />
+            );
+          })}
 
           {/* Tables */}
           {visibleDefs.map(def => (
@@ -492,15 +557,52 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
               booking={tableBookings[def.id]}
               nowMin={atMin}
               dragTarget={dragOverId===def.id}
+              selected={selectedEmptyTables.some(t => t.id === def.id)}
               onDragStart={(_b,dId)=>setDragFromId(dId)}
               onDrop={handleDrop}
               onDragOver={e=>{ e.preventDefault(); setDragOverId(def.id); }}
-              onClickEmpty={d=>onWalkinRequest?.(d.number,d.section,minToTime(atMin))}
+              onClickEmpty={(d, e) => {
+                 if (isMultiSelecting || e.shiftKey || e.metaKey) {
+                   setSelectedEmptyTables(prev => {
+                     const isSel = prev.some(t => t.id === d.id);
+                     return isSel ? prev.filter(t => t.id !== d.id) : [...prev, d];
+                   });
+                 } else {
+                   if (selectedEmptyTables.length > 0) {
+                     onWalkinRequest?.([{ section: d.section, table: d.number }], minToTime(atMin));
+                     setSelectedEmptyTables([]);
+                     setIsMultiSelecting(false);
+                   } else {
+                     onWalkinRequest?.([{ section: d.section, table: d.number }], minToTime(atMin));
+                   }
+                 }
+              }}
               onClickBooking={id=>onBookingClick?.(id)}
             />
           ))}
         </div>
       </div>
+
+      {/* Floating Action Bar for Multi-select */}
+      {selectedEmptyTables.length > 0 && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl z-[100] border border-gray-700 transition-all duration-300 animate-in slide-in-from-bottom-5"
+          style={{ backgroundColor: "rgba(17, 24, 39, 0.95)", backdropFilter: "blur(12px)" }}>
+          <div className="flex flex-col text-white">
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{selectedEmptyTables.length} tables selected</span>
+            <span style={{ fontSize: 11, color: "#9ca3af" }}>
+              Total capacity: {selectedEmptyTables.reduce((sum, t) => sum + t.capacity, 0)} pax
+            </span>
+          </div>
+          <div className="w-px h-8 bg-gray-700 mx-2" />
+          <button onClick={() => {
+            onWalkinRequest?.(selectedEmptyTables.map(t => ({ section: t.section, table: t.number })), minToTime(atMin));
+            setSelectedEmptyTables([]);
+            setIsMultiSelecting(false);
+          }} className="bg-emerald-500 hover:bg-emerald-400 text-white px-5 py-2.5 rounded-xl font-bold transition-colors shadow-lg" style={{ fontSize: 13 }}>
+            Create Booking
+          </button>
+        </div>
+      )}
     </div>
   );
 }
