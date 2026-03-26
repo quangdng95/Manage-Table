@@ -453,31 +453,6 @@ function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM
         </div>
       )}
 
-      {/* ── Status buttons ── */}
-      <div>
-        <div className="text-gray-700 mb-2" style={{ fontSize: 12, fontWeight: 600 }}>{tm.updateStatus}</div>
-        <div className="flex gap-1.5 flex-wrap">
-          {(isPast ? ["completed","noshow","cancelled"] : ["awaitingconfirm","reserved","seated","waitingpayment","noshow","cancelled","completed"]).map(s => {
-            const statusKey = s as Status;
-            const m = STATUS_META[statusKey];
-            const isActive = statusKey === status;
-            return (
-              <button key={s} onClick={() => {
-                  setCurrentStatus(statusKey);
-                  if (onStatusChange && booking) onStatusChange(booking.id, statusKey);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 transition-all"
-                style={{ borderColor: isActive ? m.dot : "#e5e7eb", backgroundColor: isActive ? m.bg : "white", fontSize: 11, fontWeight: isActive ? 700 : 400, color: isActive ? m.color : "#6b7280" }}>
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.dot }} />
-                {statusLabel(statusKey)}
-                {isActive && <Check size={11} />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="border-t border-gray-100" />
 
       {/* Save success / Past warning banners */}
       {isPast && (
@@ -659,48 +634,8 @@ function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM
         )}
       </div>
 
-      {/* ── Notify toggle + Action buttons ── */}
-      <div className="space-y-3 pt-1">
-        {/* Notify toggle */}
-        <div className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all ${isPast ? "opacity-60 pointer-events-none" : ""}`}
-          style={{ borderColor: notifyGuest ? "#10b981" : "#e5e7eb", backgroundColor: notifyGuest ? "#f0fdf4" : "#f9fafb" }}>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              {notifyGuest ? <Bell size={12} className="text-emerald-600" /> : <BellOff size={12} className="text-gray-400" />}
-              <span style={{ fontSize: 12, fontWeight: 600, color: notifyGuest ? "#047857" : "#374151" }}>{te.notifyToggle}</span>
-            </div>
-            <p style={{ fontSize: 11, lineHeight: 1.5, color: notifyGuest ? "#065f46" : "#6b7280" }}>
-              {notifyGuest ? te.notifyOn : te.notifyOff}
-            </p>
-          </div>
-          <button
-            onClick={() => setNotifyGuest(v => !v)}
-            disabled={isPast}
-            className="relative inline-flex rounded-full shrink-0 transition-colors duration-200 focus:outline-none mt-0.5"
-            style={{ width: 38, height: 22, backgroundColor: notifyGuest ? "#10b981" : "#d1d5db" }}
-          >
-            <span className="inline-block rounded-full bg-white shadow transition-transform duration-200"
-              style={{ width: 16, height: 16, marginTop: 3, transform: notifyGuest ? "translateX(19px)" : "translateX(3px)" }} />
-          </button>
-        </div>
 
-        <div className="flex items-center justify-between">
-          <button onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-            style={{ fontSize: 12 }}>{te.btnCancel}</button>
-          <div className="flex gap-2">
-            <button disabled={isPast}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              style={{ fontSize: 12 }}>{te.btnDelete}</button>
-            <button onClick={handleSave} disabled={isPast}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-white transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ fontSize: 12, backgroundColor: notifyGuest ? "#10b981" : "#6366f1" }}>
-              {notifyGuest ? <Bell size={12} /> : <Check size={13} />}
-              {notifyGuest ? te.btnSaveNotify : te.btnSaveInternal}
-            </button>
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 }
@@ -862,7 +797,7 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
         {/* ── BODY ── */}
         <div className="flex-1 overflow-y-auto">
 
-          {/* ═══ OVERVIEW ═══ */}
+        {/* ═══ OVERVIEW ═══ */}
           {activeTab === "overview" && (
             <UnifiedOverviewTab 
                 booking={booking} 
@@ -994,6 +929,48 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
 
 
         </div>
+
+        {/* ── Sticky 2-row footer (overview tab only) ── */}
+        {activeTab === "overview" && (
+          <div className="shrink-0 bg-white border-t border-gray-100">
+            {/* Row 1: Primary actions */}
+            <div className="flex items-center justify-between px-5 py-3">
+              <button onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                style={{ fontSize: 13 }}>Close</button>
+              <div className="flex gap-2">
+                <button disabled={isPast}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ fontSize: 12 }}>Delete</button>
+                <button disabled={isPast}
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  style={{ fontSize: 13, fontWeight: 600, backgroundColor: "#6366f1" }}>
+                  <Check size={13} /> Save Changes
+                </button>
+              </div>
+            </div>
+            {/* Row 2: Status progression pills */}
+            <div className="flex items-center justify-center gap-1.5 flex-wrap px-5 py-2.5 border-t border-gray-100">
+              {(["awaitingconfirm","reserved","seated","waitingpayment","completed"] as Status[]).map((s, i, arr) => {
+                const m = STATUS_META[s];
+                const isActive = s === status;
+                return (
+                  <React.Fragment key={s}>
+                    <button
+                      onClick={() => { setCurrentStatus(s); if (onStatusChange) onStatusChange(booking.id, s); }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full border-2 transition-all"
+                      style={{ fontSize: 10.5, fontWeight: isActive ? 700 : 500, borderColor: isActive ? m.dot : "#e5e7eb", backgroundColor: isActive ? m.bg : "transparent", color: isActive ? m.color : "#9ca3af" }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: m.dot }} />
+                      {m.label}
+                      {isActive && <Check size={10} />}
+                    </button>
+                    {i < arr.length - 1 && <span className="text-gray-300" style={{ fontSize: 9 }}>›</span>}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
       {/* Document preview overlay */}
       {previewDoc && <DocPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}

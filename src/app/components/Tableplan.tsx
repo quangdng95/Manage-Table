@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { Users, Plus, Clock, X, MousePointer2 } from "lucide-react";
 import {
   ALL_BOOKINGS, STATUS_META, getBookingsForDay,
@@ -182,13 +182,16 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
   const startMin = booking ? (() => { const [h,m]=booking.time.split(":").map(Number); return h*60+m; })() : 0;
   const minsToStart = startMin - nowMin;
   const isNoShow = booking?.status === "noshow";
-  const isLate   = !isEmpty && booking!.status==="awaitingconfirm" && minsToStart < 0;
+  const isLate   = !isEmpty && (booking!.status==="awaitingconfirm" || booking!.status==="reserved") && minsToStart < 0;
   const isSoon   = !isEmpty && booking!.status==="awaitingconfirm" && minsToStart>=0 && minsToStart<=20;
 
-  const borderColor = selected ? "#10b981" : dragTarget ? "#3b82f6" : isEmpty ? "#e5e7eb" : fillDot;
+  const LATE_RED = "#F44336";
+  const lateColor = isLate ? LATE_RED : null;
+
+  const borderColor = selected ? "#10b981" : dragTarget ? "#3b82f6" : isEmpty ? "#e5e7eb" : (lateColor ?? fillDot);
   const borderW     = selected ? 3 : dragTarget ? 3 : isEmpty ? 1.5 : 2;
-  const actualBg    = selected ? "#ecfdf5" : fillBg;
-  const actualText  = selected ? "#047857" : fillText;
+  const actualBg    = isLate ? "#FFEBEE" : selected ? "#ecfdf5" : fillBg;
+  const actualText  = isLate ? LATE_RED  : selected ? "#047857" : fillText;
 
   const initials = booking ? booking.guestName.split(" ").map(p=>p[0]).join("").slice(0,2).toUpperCase() : null;
 
@@ -284,14 +287,14 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
 // ── Linked-group bounding box ─────────────────────────────────────
 function LinkedBox({ defs, onUnlink }: { defs: TableDef[], onUnlink: () => void }) {
   if (defs.length < 2) return null;
-  const p=14, x1=Math.min(...defs.map(d=>d.x))-p, y1=Math.min(...defs.map(d=>d.y))-p;
+  const p=28, x1=Math.min(...defs.map(d=>d.x))-p, y1=Math.min(...defs.map(d=>d.y))-p;
   const x2=Math.max(...defs.map(d=>d.x+d.w))+p, y2=Math.max(...defs.map(d=>d.y+d.h))+p;
   return (
     <div style={{ position:"absolute",left:x1,top:y1,width:x2-x1,height:y2-y1,
-      border:"2px dashed #818cf8",borderRadius:16,pointerEvents:"none",zIndex:0 }}>
+      border:"2.5px dashed #818cf8",borderRadius:20,pointerEvents:"none",zIndex:20 }}>
       
       {/* Label and button wrapper with pointer-events auto */}
-      <div style={{ position:"absolute",top:-13,left:10,pointerEvents:"auto" }} className="flex items-center gap-2">
+      <div style={{ position:"absolute",top:-14,left:12,pointerEvents:"auto" }} className="flex items-center gap-2">
         <div style={{ backgroundColor:"#6366f1",color:"white",fontSize:9.5,fontWeight:700,padding:"2px 8px",borderRadius:20 }}>
           Merged Group
         </div>
@@ -343,7 +346,7 @@ interface TableplanProps {
   forceRender?: number;
 }
 
-export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanProps) {
+export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }: TableplanProps) {
   const nowDate = new Date();
   const nowMinsActual = nowDate.getHours() * 60 + nowDate.getMinutes();
 
@@ -354,8 +357,45 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
   const [unlinkedGroups, setUnlinkedGroups] = useState<Set<string>>(new Set());
   const [, setTick] = useState(0);
 
+  // ── Re-render when parent signals a new booking was created ──
+  useEffect(() => { setTick(v => v + 1); }, [forceRender]);
+
   const [selectedEmptyTables, setSelectedEmptyTables] = useState<TableDef[]>([]);
   const [isMultiSelecting, setIsMultiSelecting] = useState(false);
+
+  // ── Pan & zoom state ──
+  const [scale, setScale]   = useState(1);
+  const [pan,   setPan]     = useState({ x: 40, y: 40 });
+  const isPanning           = useRef(false);
+  const panStart            = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+  const canvasContainerRef  = useRef<HTMLDivElement>(null);
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setScale(s => Math.min(2.5, Math.max(0.25, s * delta)));
+  }, []);
+
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
+
+  function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    // Only pan on the container background (not on table elements)
+    if ((e.target as HTMLElement).closest('[data-table]')) return;
+    isPanning.current = true;
+    panStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
+  }
+  function onMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!isPanning.current) return;
+    const dx = e.clientX - panStart.current.mx;
+    const dy = e.clientY - panStart.current.my;
+    setPan({ x: panStart.current.px + dx, y: panStart.current.py + dy });
+  }
+  function onMouseUp() { isPanning.current = false; }
 
   const atMin = sliderMin;
   const isAll = areaFilter === "All";
@@ -442,8 +482,44 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
   const AREA_TABS: AreaFilter[] = ["All", "Restaurant", "First floor", "Terrace", "Bar"];
   const ALL_STATUSES = Object.keys(STATUS_META) as Status[];
 
-  const CANVAS_W = isAll ? ZONE_W * 2 : ZONE_W;
-  const CANVAS_H = isAll ? ZONE_H * 2 : ZONE_H;
+  // Per-section canvas dimensions (each area is its own box)
+  const SECTION_PAD = 40;
+  const sectionBounds = useMemo(() => {
+    const result: Record<string, { w: number; h: number }> = {};
+    for (const [sec, defs] of Object.entries(LOCAL_TABLES)) {
+      const maxX = Math.max(...defs.map(d => d.x + d.w)) + SECTION_PAD;
+      const maxY = Math.max(...defs.map(d => d.y + d.h)) + SECTION_PAD + 24; // 24 for top label
+      result[sec] = { w: Math.max(maxX, 400), h: Math.max(maxY, 300) };
+    }
+    return result;
+  }, []);
+
+  // Layout: arrange sections in a 2-column flow on the infinite canvas
+  const SECTION_ORDER: Section[] = ["Restaurant", "First floor", "Terrace", "Bar"];
+  const SECTION_GAP = 32;
+  const sectionPositions = useMemo(() => {
+    const pos: Record<string, { x: number; y: number }> = {};
+    let x = 0, y = 0, rowH = 0;
+    SECTION_ORDER.forEach((sec, idx) => {
+      const b = sectionBounds[sec] ?? { w: ZONE_W, h: ZONE_H };
+      pos[sec] = { x, y };
+      rowH = Math.max(rowH, b.h);
+      if (idx % 2 === 1) { // start new row after every 2 sections
+        x = 0; y += rowH + SECTION_GAP; rowH = 0;
+      } else {
+        x += b.w + SECTION_GAP;
+      }
+    });
+    return pos;
+  }, [sectionBounds]);
+
+  // Total infinite canvas size
+  const totalCanvasW = useMemo(() => {
+    return Math.max(...SECTION_ORDER.map(s => (sectionPositions[s]?.x ?? 0) + (sectionBounds[s]?.w ?? 0))) + SECTION_PAD;
+  }, [sectionPositions, sectionBounds]);
+  const totalCanvasH = useMemo(() => {
+    return Math.max(...SECTION_ORDER.map(s => (sectionPositions[s]?.y ?? 0) + (sectionBounds[s]?.h ?? 0))) + SECTION_PAD;
+  }, [sectionPositions, sectionBounds]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor:"#f1f5f9" }}>
@@ -521,65 +597,143 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest }: TableplanPro
         ))}
       </div>
 
-      {/* ── Unified canvas ── */}
-      <div className="flex-1 overflow-auto p-4 flex items-start justify-center bg-gray-50">
-        <div className="relative rounded-2xl overflow-hidden transition-all duration-300"
-          style={{ width:CANVAS_W, height:CANVAS_H, boxShadow:"0 2px 20px rgba(0,0,0,0.08)" }}
-          onDragOver={e=>e.preventDefault()}>
+      {/* ── Infinite canvas viewport ── */}
+      <div
+        ref={canvasContainerRef}
+        className="flex-1 overflow-hidden bg-gray-100 relative"
+        style={{ cursor: isPanning.current ? "grabbing" : "grab" }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      >
+        {/* Zoom controls */}
+        <div className="absolute bottom-4 right-4 z-30 flex flex-col gap-1">
+          <button onClick={() => setScale(s => Math.min(2.5, s * 1.2))}
+            className="w-8 h-8 bg-white border border-gray-200 rounded-lg shadow text-gray-600 hover:bg-gray-50 flex items-center justify-center font-bold" style={{ fontSize: 18 }}>+</button>
+          <button onClick={() => {
+              const el = canvasContainerRef.current;
+              if (!el) { setScale(1); setPan({ x: 40, y: 40 }); return; }
+              // Combined bounding box of all 4 section containers
+              const totalW = 870 + 830; // First floor right edge
+              const totalH = 590 + 550; // Bar bottom edge
+              const vpW = el.clientWidth;
+              const vpH = el.clientHeight;
+              const PAD = 40; // padding around the content
+              const fitScale = Math.min(
+                (vpW - PAD * 2) / totalW,
+                (vpH - PAD * 2) / totalH,
+                1.0 // never zoom in beyond 100%
+              );
+              const panX = (vpW - totalW * fitScale) / 2;
+              const panY = (vpH - totalH * fitScale) / 2;
+              setScale(fitScale);
+              setPan({ x: panX, y: panY });
+            }}
+            className="w-8 h-8 bg-white border border-gray-200 rounded-lg shadow text-gray-400 hover:bg-gray-50 flex items-center justify-center" style={{ fontSize: 9, fontWeight: 700 }}>FIT</button>
+          <button onClick={() => setScale(s => Math.max(0.25, s * 0.83))}
+            className="w-8 h-8 bg-white border border-gray-200 rounded-lg shadow text-gray-600 hover:bg-gray-50 flex items-center justify-center font-bold" style={{ fontSize: 20 }}>−</button>
+        </div>
 
-          {/* Zone backgrounds */}
-          {(isAll ? ["Restaurant","First floor","Terrace","Bar"] as Section[] : [areaFilter as Section]).map(sec=>(
-            <ZoneBg key={sec} sec={sec} isAll={isAll} />
-          ))}
-
-          {/* Linked group overlays */}
-          {Object.values(visibleGroups).map((grp,i) => {
-            const groupId = grp[0].linkedGroup!;
+        {/* Transformable canvas */}
+        <div style={{
+          position: "absolute",
+          transformOrigin: "0 0",
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+          width: totalCanvasW,
+          height: totalCanvasH,
+        }}>
+          {/* Render per-section boxes */}
+          {(isAll ? SECTION_ORDER : [areaFilter as Section]).map(sec => {
+            const pos = isAll ? sectionPositions[sec] : { x: 0, y: 0 };
+            const bounds = sectionBounds[sec] ?? { w: ZONE_W, h: ZONE_H };
+            const z = ZONE[sec];
+            const secDefs = visibleDefs.filter(d => d.section === sec).map(d => ({
+              ...d,
+              x: d.x - (isAll ? ZONE[d.section].dx : 0),
+              y: d.y - (isAll ? ZONE[d.section].dy : 0),
+            }));
+            const secGroups = Object.values(visibleGroups)
+              .map(grp => grp.map(d => ({
+                ...d,
+                x: d.x - (isAll ? ZONE[d.section].dx : 0),
+                y: d.y - (isAll ? ZONE[d.section].dy : 0),
+              })))
+              .filter(grp => grp[0]?.section === sec);
             return (
-              <LinkedBox key={i} defs={grp} onUnlink={() => {
-                if (groupId.startsWith('booking-')) {
-                  const bId = Number(groupId.replace('booking-', ''));
-                  const b = ALL_BOOKINGS.find(x => x.id === bId);
-                  if (b) {
-                    delete b.additionalTables;
-                    setTick(v => v + 1);
-                  }
-                } else {
-                  setUnlinkedGroups(prev => new Set(prev).add(groupId));
-                }
-              }} />
+              <div key={sec} style={{
+                position: "absolute",
+                left: pos.x,
+                top: pos.y,
+                width: bounds.w,
+                height: bounds.h,
+                backgroundColor: z.bg,
+                borderRadius: 16,
+                boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
+                overflow: "visible",
+              }}>
+                {/* Section label */}
+                <div style={{ position:"absolute", top:10, left:16, fontSize:12, fontWeight:700,
+                  color:z.labelColor, backgroundColor:z.labelColor+"22", padding:"3px 10px", borderRadius:20, zIndex:1 }}>
+                  {z.label}
+                </div>
+                {/* Watermark */}
+                <div style={{ position:"absolute", bottom:12, right:16, fontSize:22, fontWeight:900,
+                  color:z.labelColor+"18", letterSpacing:"0.08em", userSelect:"none", zIndex:0 }}>
+                  {z.label.toUpperCase()}
+                </div>
+
+                {/* Linked group overlays for this section */}
+                {secGroups.map((grp, i) => {
+                  const groupId = grp[0].linkedGroup!;
+                  return (
+                    <LinkedBox key={i} defs={grp} onUnlink={() => {
+                      if (groupId.startsWith('booking-')) {
+                        const bId = Number(groupId.replace('booking-', ''));
+                        const b = ALL_BOOKINGS.find(x => x.id === bId);
+                        if (b) { delete b.additionalTables; setTick(v => v + 1); }
+                      } else {
+                        setUnlinkedGroups(prev => new Set(prev).add(groupId));
+                      }
+                    }} />
+                  );
+                })}
+
+                {/* Tables for this section */}
+                {secDefs.map(def => (
+                  <div key={def.id} data-table="1">
+                    <FloorTable def={def}
+                      booking={tableBookings[def.id]}
+                      nowMin={atMin}
+                      dragTarget={dragOverId===def.id}
+                      selected={selectedEmptyTables.some(t => t.id === def.id)}
+                      onDragStart={(_b,dId)=>setDragFromId(dId)}
+                      onDrop={handleDrop}
+                      onDragOver={e=>{ e.preventDefault(); setDragOverId(def.id); }}
+                      onClickEmpty={(d, e) => {
+                        e.stopPropagation();
+                        if (isMultiSelecting || e.shiftKey || e.metaKey) {
+                          setSelectedEmptyTables(prev => {
+                            const isSel = prev.some(t => t.id === d.id);
+                            return isSel ? prev.filter(t => t.id !== d.id) : [...prev, d];
+                          });
+                        } else {
+                          if (selectedEmptyTables.length > 0) {
+                            onWalkinRequest?.([{ section: d.section, table: d.number }], minToTime(atMin));
+                            setSelectedEmptyTables([]);
+                            setIsMultiSelecting(false);
+                          } else {
+                            onWalkinRequest?.([{ section: d.section, table: d.number }], minToTime(atMin));
+                          }
+                        }
+                      }}
+                      onClickBooking={id=>onBookingClick?.(id)}
+                    />
+                  </div>
+                ))}
+              </div>
             );
           })}
-
-          {/* Tables */}
-          {visibleDefs.map(def => (
-            <FloorTable key={def.id} def={def}
-              booking={tableBookings[def.id]}
-              nowMin={atMin}
-              dragTarget={dragOverId===def.id}
-              selected={selectedEmptyTables.some(t => t.id === def.id)}
-              onDragStart={(_b,dId)=>setDragFromId(dId)}
-              onDrop={handleDrop}
-              onDragOver={e=>{ e.preventDefault(); setDragOverId(def.id); }}
-              onClickEmpty={(d, e) => {
-                 if (isMultiSelecting || e.shiftKey || e.metaKey) {
-                   setSelectedEmptyTables(prev => {
-                     const isSel = prev.some(t => t.id === d.id);
-                     return isSel ? prev.filter(t => t.id !== d.id) : [...prev, d];
-                   });
-                 } else {
-                   if (selectedEmptyTables.length > 0) {
-                     onWalkinRequest?.([{ section: d.section, table: d.number }], minToTime(atMin));
-                     setSelectedEmptyTables([]);
-                     setIsMultiSelecting(false);
-                   } else {
-                     onWalkinRequest?.([{ section: d.section, table: d.number }], minToTime(atMin));
-                   }
-                 }
-              }}
-              onClickBooking={id=>onBookingClick?.(id)}
-            />
-          ))}
         </div>
       </div>
 

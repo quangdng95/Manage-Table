@@ -305,7 +305,7 @@ export function ListView({ period, day, onBookingClick, onUpdateStatus, forceRen
     ...statusOptionKeys.slice(1).map(k => STATUS_META[k as keyof typeof STATUS_META]?.label ?? k),
   ];
 
-  const sectionOptionKeys = ["All", "Restaurant", "First floor", "Terrace", "Bar"];
+  const sectionOptionKeys: Array<"All" | "Restaurant" | "First floor" | "Terrace" | "Bar"> = ["All", "Restaurant", "First floor", "Terrace", "Bar"];
   const sectionOptionLabels = tl.sectionOptions;
 
   const filtered = useMemo(() => {
@@ -433,8 +433,8 @@ export function ListView({ period, day, onBookingClick, onUpdateStatus, forceRen
             style={{ fontSize: 11 }}
             value={sectionFilter}
             onChange={(e) => {
-              const idx = sectionOptionLabels.indexOf(e.target.value);
-              setSectionFilter(idx > 0 ? (sectionOptionKeys[idx] as any) : "All");
+              const idx = (sectionOptionLabels as readonly string[]).indexOf(e.target.value);
+              setSectionFilter(idx > 0 ? (sectionOptionKeys[idx] as "All" | "Restaurant" | "First floor" | "Terrace" | "Bar") : "All");
             }}
           >
             {sectionOptionLabels.map((label, i) => <option key={i} value={label}>{label}</option>)}

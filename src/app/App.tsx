@@ -302,6 +302,8 @@ function AppInner() {
         onClose={() => setBookingDrawerOpen(false)}
         initialType={bookingDrawerType}
         initialSlot={bookingDrawerSlot}
+        selectedDay={selectedDay}
+        onBookingCreated={() => setForceRender(v => v + 1)}
       />
     </div>
   );

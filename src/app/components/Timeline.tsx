@@ -38,25 +38,23 @@ const SECTIONS = [
   { name: "Bar",         tables: [6,8] },
 ];
 
-// ── Colors by STATUS ─────────────────────────────────────────
-const STATUS_COLOR: Record<string, string> = {
-  confirmed: "#6366f1",
-  arrived:   "#0ea5e9",
-  seated:    "#10b981",
-  waiting:   "#f59e0b",
-  noshow:    "#ef4444",
-  cancelled: "#9ca3af",
-};
-const STATUS_LIGHT: Record<string, string> = {
-  confirmed: "#a5b4fc",
-  arrived:   "#7dd3fc",
-  seated:    "#6ee7b7",
-  waiting:   "#fcd34d",
-  noshow:    "#f87171",
-  cancelled: "#d1d5db",
-};
-function barColor(b: Booking) {
-  return STATUS_COLOR[b.status] ?? "#6366f1";
+// ── Status colors — driven from STATUS_META (single source of truth) ─────────
+const LATE_COLOR       = "#F44336";  // Red for overdue Reserved/AwaitingConfirm
+const LATE_LIGHT       = "#FFCDD2";
+
+function isBookingOverdue(b: Booking, nowMin: number): boolean {
+  if (b.status !== "reserved" && b.status !== "awaitingconfirm") return false;
+  const [h, m] = b.time.split(":").map(Number);
+  return (h * 60 + m) < nowMin;
+}
+function barColor(b: Booking, nowMin: number): string {
+  if (isBookingOverdue(b, nowMin)) return LATE_COLOR;
+  return STATUS_META[b.status]?.dot ?? "#6b7280";
+}
+function barLight(b: Booking, nowMin: number): string {
+  if (isBookingOverdue(b, nowMin)) return LATE_LIGHT;
+  // lighter tint of dot color
+  return STATUS_META[b.status]?.bg ? STATUS_META[b.status].bg : "#e5e7eb";
 }
 function timeToMin(t: string) {
   const [h, m] = t.split(":").map(Number);
@@ -129,97 +127,100 @@ function SlotPopup({ slot, nowMin, onNewBooking, onWalkIn, onClose }: SlotPopupP
     future: { badge: slot.time,       badgeBg: "#d1fae5", badgeText: "#065f46", dotColor: "#10b981" },
   }[kind];
 
-  return (
-    <div
-      ref={popupRef}
-      className="fixed z-[100] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
-      style={{ left: pos.x, top: pos.y, width: 230, animation: "fadeSlotIn 0.15s cubic-bezier(0.34,1.4,0.64,1)" }}
-    >
-      <style>{`@keyframes fadeSlotIn { from { opacity:0; transform:scale(0.92) translateY(4px);} to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
-
-      {/* Header */}
-      <div className="px-3.5 py-2.5 border-b border-gray-100 bg-gray-50 flex items-start justify-between gap-2">
+    const walkInBtn = (
+      <button
+        onClick={() => { onWalkIn(slot); onClose(); }}
+        className="w-full flex items-center gap-3 p-2.5 rounded-xl border-2 hover:bg-blue-50 transition-colors text-left group"
+        style={{ borderColor: kind !== "future" ? "#3b82f6" : "#e5e7eb" }}
+      >
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors"
+          style={{ backgroundColor: kind !== "future" ? "#3b82f6" : "#eff6ff" }}
+        >
+          <Zap size={14} color={kind !== "future" ? "white" : "#3b82f6"} />
+        </div>
         <div>
-          <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 700 }}>
-            {slot.section} · T.{slot.table}
-          </div>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <Clock size={10} className="text-gray-400" />
-            <span className="text-gray-500" style={{ fontSize: 11 }}>{slot.time}</span>
-            <span
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full"
-              style={{ fontSize: 9.5, fontWeight: 700, backgroundColor: kindMeta.badgeBg, color: kindMeta.badgeText }}
-            >
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: kindMeta.dotColor }} />
-              {kindMeta.badge}
-            </span>
+          <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 600 }}>{ts.walkIn}</div>
+          <div className="text-gray-500" style={{ fontSize: 10.5 }}>
+            {kind === "future" ? ts.walkInFutureDesc : ts.walkInNowDesc}
           </div>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors mt-0.5"><X size={13} /></button>
-      </div>
+        {kind !== "future" && (
+          <span className="ml-auto px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>{ts.badgePrimary}</span>
+        )}
+      </button>
+    );
 
-      {/* Options */}
-      <div className="p-2.5 space-y-1.5">
-
-        {/* Walk-in — always available */}
-        <button
-          onClick={() => { onWalkIn(slot); onClose(); }}
-          className="w-full flex items-center gap-3 p-2.5 rounded-xl border-2 hover:bg-blue-50 transition-colors text-left group"
-          style={{ borderColor: kind !== "future" ? "#3b82f6" : "#e5e7eb" }}
+    const newBookingBtn = kind !== "past" ? (
+      <button
+        onClick={() => { onNewBooking(slot); onClose(); }}
+        className="w-full flex items-center gap-3 p-2.5 rounded-xl border-2 hover:bg-emerald-50 transition-colors text-left group"
+        style={{ borderColor: kind === "future" ? "#10b981" : "#e5e7eb" }}
+      >
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+          style={{ backgroundColor: kind === "future" ? "#10b981" : "#f0fdf4" }}
         >
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors"
-            style={{ backgroundColor: kind !== "future" ? "#3b82f6" : "#eff6ff" }}
-          >
-            <Zap size={14} color={kind !== "future" ? "white" : "#3b82f6"} />
+          <Plus size={14} color={kind === "future" ? "white" : "#10b981"} />
+        </div>
+        <div>
+          <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 600 }}>{ts.newBooking}</div>
+          <div className="text-gray-500" style={{ fontSize: 10.5 }}>
+            {kind === "future" ? `${ts.newBookingFutureDesc} ${slot.time}` : ts.newBookingNowDesc}
           </div>
+        </div>
+        {kind === "future" && (
+          <span className="ml-auto px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>{ts.badgePlan}</span>
+        )}
+      </button>
+    ) : null;
+
+    return (
+      <div
+        ref={popupRef}
+        className="fixed z-[100] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
+        style={{ left: pos.x, top: pos.y, width: 230, animation: "fadeSlotIn 0.15s cubic-bezier(0.34,1.4,0.64,1)" }}
+      >
+        <style>{`@keyframes fadeSlotIn { from { opacity:0; transform:scale(0.92) translateY(4px);} to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
+
+        {/* Header */}
+        <div className="px-3.5 py-2.5 border-b border-gray-100 bg-gray-50 flex items-start justify-between gap-2">
           <div>
-            <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 600 }}>{ts.walkIn}</div>
-            <div className="text-gray-500" style={{ fontSize: 10.5 }}>
-              {kind === "future" ? ts.walkInFutureDesc : ts.walkInNowDesc}
+            <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 700 }}>
+              {slot.section} · T.{slot.table}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <Clock size={10} className="text-gray-400" />
+              <span className="text-gray-500" style={{ fontSize: 11 }}>{slot.time}</span>
+              <span
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full"
+                style={{ fontSize: 9.5, fontWeight: 700, backgroundColor: kindMeta.badgeBg, color: kindMeta.badgeText }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: kindMeta.dotColor }} />
+                {kindMeta.badge}
+              </span>
             </div>
           </div>
-          {kind !== "future" && (
-            <span className="ml-auto px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>{ts.badgePrimary}</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors mt-0.5"><X size={13} /></button>
+        </div>
+
+        {/* Options — context-ordered: future → New booking first; now/past → Walk-in first */}
+        <div className="p-2.5 space-y-1.5">
+          {kind === "future" ? (
+            <>{newBookingBtn}{walkInBtn}</>
+          ) : (
+            <>{walkInBtn}{newBookingBtn}</>
           )}
-        </button>
-
-        {/* New booking — future & now only */}
-        {kind !== "past" && (
-          <button
-            onClick={() => { onNewBooking(slot); onClose(); }}
-            className="w-full flex items-center gap-3 p-2.5 rounded-xl border-2 hover:bg-emerald-50 transition-colors text-left group"
-            style={{ borderColor: kind === "future" ? "#10b981" : "#e5e7eb" }}
-          >
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-              style={{ backgroundColor: kind === "future" ? "#10b981" : "#f0fdf4" }}
-            >
-              <Plus size={14} color={kind === "future" ? "white" : "#10b981"} />
+          {kind === "past" && (
+            <div className="flex items-start gap-2 px-1 pb-1">
+              <Info size={11} className="text-gray-300 mt-0.5 shrink-0" />
+              <p className="text-gray-400" style={{ fontSize: 10, lineHeight: 1.4 }}>{ts.pastNote}</p>
             </div>
-            <div>
-              <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 600 }}>{ts.newBooking}</div>
-              <div className="text-gray-500" style={{ fontSize: 10.5 }}>
-                {kind === "future" ? `${ts.newBookingFutureDesc} ${slot.time}` : ts.newBookingNowDesc}
-              </div>
-            </div>
-            {kind === "future" && (
-              <span className="ml-auto px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>{ts.badgePlan}</span>
-            )}
-          </button>
-        )}
-
-        {/* Past time note */}
-        {kind === "past" && (
-          <div className="flex items-start gap-2 px-1 pb-1">
-            <Info size={11} className="text-gray-300 mt-0.5 shrink-0" />
-            <p className="text-gray-400" style={{ fontSize: 10, lineHeight: 1.4 }}>{ts.pastNote}</p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 // ── Props ─────────────────────────────────────────────────────
 export interface SlotInfo {
@@ -351,8 +352,9 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
     setCollapsed(prev => { const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n; });
   }
 
-  // Click on an empty cell in a row
+  // Click on an empty cell in a row — shows context-aware popup
   function handleCellClick(e: React.MouseEvent<HTMLDivElement>, section: string, table: number) {
+    if (e.target !== e.currentTarget) return; // ignore bubbled events from child elements
     const rect = e.currentTarget.getBoundingClientRect();
     const relX  = e.clientX - rect.left;
     const rawMin = (relX / rect.width) * totalMins + START_MIN;
@@ -625,11 +627,10 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                           const startPct = minToPct(effectiveSMin);
                           const widthPct = Math.max((effectiveEMin - effectiveSMin) / totalMins * 100, 2);
                           
-                          const color   = barColor(b);
-                          const light   = STATUS_LIGHT[b.status] ?? color;
+                          const color   = barColor(b, nowMin);
+                          const light   = barLight(b, nowMin);
                           const searchOp = getOpacity(b);
                           const hi      = isHighlighted(b);
-                          const striped = b.status === "waitingpayment" || b.status === "reserved";
                           
                           const timeState = getBookingTimeState(b, nowMin, day);
                           const isPast    = timeState === "past";
@@ -637,6 +638,20 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
 
                           const isLinkedGroup = b.additionalTables && b.additionalTables.length > 0;
                           const isHoveredLinked = hoveredId === b.id && isLinkedGroup;
+
+                          // ── Split-color: seated but arrived late ──
+                          const seatedLate = b.status === "seated" && !!b.actualSeatedTime &&
+                            timeToMin(b.actualSeatedTime) > timeToMin(b.time);
+                          const lostPct = seatedLate
+                            ? ((timeToMin(b.actualSeatedTime!) - timeToMin(b.time)) / (timeToMin(b.endTime) - timeToMin(b.time))) * 100
+                            : 0;
+                          // Red stripe for lost time, solid cyan for active time
+                          const LATE_C = "#F44336";
+                          const LATE_L = "#FFCDD2";
+                          const CYAN   = STATUS_META.seated.dot; // #00BCD4
+                          const splitBg = seatedLate
+                            ? `repeating-linear-gradient(45deg,${LATE_C},${LATE_C} 4px,${LATE_L} 4px,${LATE_L} 8px) 0 0 / ${lostPct}% 100% no-repeat, ${CYAN}`
+                            : color;
 
                           return (
                             <div key={`${b.id}-${sec.name}-${tableNum}`} className="absolute rounded overflow-hidden group/booking"
@@ -658,14 +673,12 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                                 opacity: isPast ? 0.5 : searchOp,
                                 filter: undefined,
                                 zIndex: isCurrent || isHoveredLinked ? 15 : hi ? 10 : 3,
-                                background: striped
-                                  ? `repeating-linear-gradient(45deg,${color},${color} 5px,${light} 5px,${light} 10px)`
-                                  : color,
+                                background: splitBg,
                                 boxShadow: isCurrent ? `0 0 0 2px white, 0 0 0 3px ${color}` : (hi || isHoveredLinked) ? `0 0 0 2px white, 0 0 0 3px ${color}` : "none",
                                 cursor: "pointer",
                                 transition: dragState?.id === b.id ? "none" : "left 0.1s, width 0.1s, opacity 0.15s, background-color 0.15s, box-shadow 0.15s",
                               }}
-                              title={`${b.guestName} · ${b.time}–${b.endTime} · ${b.guests} guests${isLinkedGroup ? ` · Merged Tables` : ""}${isPast && b.status === "completed" ? ` (Completed)` : ""}`}
+                              title={`${b.guestName} · ${b.time}${seatedLate ? `→${b.actualSeatedTime}` : ""}–${b.endTime} · ${b.guests} guests${isLinkedGroup ? ` · Merged Tables` : ""}${isPast && b.status === "completed" ? ` (Completed)` : ""}${seatedLate ? ` · Late arrival (${b.actualSeatedTime})` : ""}`}
                               onClick={e => { e.stopPropagation(); onBookingClick?.(b.id); }}>
                               
                               {/* Left Resize Handle */}
@@ -710,9 +723,10 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
               </div>
             );
           })}
-        </div>
-        </div>
-      </div>
+        </div>   {/* end: flex-1 sections container */}
+        </div>   {/* end: zoom wrapper */}
+      </div>     {/* end: scrollRef scrollable area */}
+
 
       {/* ── Slot popup ── */}
       {popup && (

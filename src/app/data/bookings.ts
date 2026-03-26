@@ -21,6 +21,8 @@ export interface Booking {
   hasFile: boolean;
   period: Period;
   additionalTables?: TableAssignment[];
+  /** HH:MM — recorded when status transitions to 'seated'. Used for split-color late rendering. */
+  actualSeatedTime?: string;
 }
 
 export const PERIOD_THEMES = {
@@ -175,6 +177,17 @@ export function updateBookingStatus(id: number, newStatus: Status, selectedDay: 
 
   b.status = newStatus;
 
+  // Record actual seated time for split-color late visualization
+  if (newStatus === "seated") {
+    const dNow = new Date();
+    const hh = String(dNow.getHours()).padStart(2, "0");
+    const mm = String(dNow.getMinutes()).padStart(2, "0");
+    b.actualSeatedTime = `${hh}:${mm}`;
+  } else {
+    // Clear if moved to another status
+    delete b.actualSeatedTime;
+  }
+
   // Early Free Logic
   if (newStatus === "completed") {
     const dNow = new Date();
@@ -191,6 +204,24 @@ export function updateBookingStatus(id: number, newStatus: Status, selectedDay: 
       }
     }
   }
+}
+
+/** Returns the next available booking ID (max existing id + 1). */
+export function getNextBookingId(): number {
+  return Math.max(0, ...ALL_BOOKINGS.map(b => b.id)) + 1;
+}
+
+/** Derives the service period from a given HH:MM time string. */
+export function getPeriodForTime(time: string): Period {
+  const [h] = time.split(":").map(Number);
+  if (h < 12) return "morning";
+  if (h < 17) return "lunch";
+  return "evening";
+}
+
+/** Pushes a new booking into the shared ALL_BOOKINGS array (global mutation). */
+export function addBooking(newBooking: Booking): void {
+  ALL_BOOKINGS.push(newBooking);
 }
 
 /** Determines the visual hierarchy state of a booking on the timeline based on its status and time. */
