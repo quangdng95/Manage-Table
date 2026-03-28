@@ -172,6 +172,17 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
   onClickEmpty: (d: TableDef, e: React.MouseEvent) => void; onClickBooking: (id: number) => void;
   onDragStart: (bId:number,dId:string)=>void; onDrop:(dId:string)=>void; onDragOver:(e:React.DragEvent)=>void;
 }) {
+  const [isDraggable, setIsDraggable] = useState(false);
+  const dragTimer = useRef<number | null>(null);
+
+  const handlePointerDown = () => {
+    if (!booking) return;
+    dragTimer.current = window.setTimeout(() => setIsDraggable(true), 300);
+  };
+  const cancelDragTimer = () => {
+    if (dragTimer.current) { window.clearTimeout(dragTimer.current); dragTimer.current = null; }
+    setIsDraggable(false);
+  };
   const isEmpty  = !booking;
   const status   = booking?.status as Status|null;
   const meta     = status ? STATUS_META[status] : null;
@@ -217,11 +228,15 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
         <RadialChairs count={def.capacity} radius={def.w / 2} color={chairColor} />
       )}
 
-      {/* Table surface */}
       <div
-        className="select-none flex flex-col items-center justify-center transition-all duration-150 group"
-        draggable={!isEmpty}
+        className={`select-none flex flex-col items-center justify-center transition-all duration-150 group ${isDraggable ? "scale-105 shadow-xl ring-2 ring-blue-400" : ""}`}
+        draggable={isDraggable}
         onDragStart={e => { if (booking) { e.dataTransfer.setData("text/plain",""); onDragStart(booking.id, def.id); } }}
+        onDragEnd={cancelDragTimer}
+        onPointerDown={handlePointerDown}
+        onPointerUp={cancelDragTimer}
+        onPointerCancel={cancelDragTimer}
+        onPointerLeave={cancelDragTimer}
         onClick={(e) => isEmpty ? onClickEmpty(def, e) : onClickBooking(booking!.id)}
         style={{
           width:def.w, height:def.h, position:"relative",
@@ -232,7 +247,8 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
           boxShadow: dragTarget
             ? `0 0 0 4px #3b82f640, 0 4px 16px rgba(59,130,246,0.2)`
             : isEmpty ? "0 1px 3px rgba(0,0,0,0.06)" : `0 2px 10px ${fillDot}35`,
-          cursor: isEmpty ? "crosshair" : "grab",
+          cursor: isEmpty ? "crosshair" : (isDraggable ? "grabbing" : "grab"),
+          touchAction: "pan-x pan-y", // allow scrolling otherwise
         }}
         title={booking
           ? `${booking.guestName} · ${booking.guests} pax · ${booking.time}–${booking.endTime} · ${meta?.label}`
@@ -267,7 +283,7 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
         )}
 
         {/* Hover overlay */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 [@media(hover:none)]:hidden transition-opacity flex items-center justify-center"
           style={{ backgroundColor: isEmpty?"rgba(59,130,246,0.07)":"rgba(0,0,0,0.11)",
             borderRadius:"inherit", clipPath:def.shape==="octagon"?OCTAGON:undefined }}>
           <span style={{ color:"white", fontSize:9, fontWeight:800, textShadow:"0 1px 3px rgba(0,0,0,0.5)" }}>
@@ -300,7 +316,7 @@ function LinkedBox({ defs, onUnlink }: { defs: TableDef[], onUnlink: () => void 
         </div>
         <button
           onClick={onUnlink}
-          className="bg-white text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm rounded-full p-0.5 border border-gray-100"
+          className="bg-white text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm rounded-full w-10 h-10 flex items-center justify-center border border-gray-100"
           title="Detach tables"
         >
           <X size={12} strokeWidth={3} />

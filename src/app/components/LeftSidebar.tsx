@@ -1,23 +1,18 @@
-import React, { useRef, useCallback, useState as useStateAlias } from "react";
+import React, { useRef, useCallback, useState } from "react";
 import {
   ChevronLeft, ChevronRight, Settings, MessageSquare,
-  FileText, Calendar, Users, Pencil, Sun, Coffee, Moon, Clock, Globe,
-  ChevronDown, ChevronUp, Info, X,
+  FileText, Calendar, Users, Pencil, Sun, Coffee, Moon, Clock,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useLang } from "../context/LanguageContext";
 import type { Lang } from "../i18n/translations";
 import { getBookingsForDay } from "../data/bookings";
 
-// ── March 2026 calendar ───────────────────────────────────────
-const calendarGrid = [
-  [1, 2, 3, 4, 5, 6, 7],
-  [8, 9, 10, 11, 12, 13, 14],
-  [15, 16, 17, 18, 19, 20, 21],
-  [22, 23, 24, 25, 26, 27, 28],
-  [29, 30, 31, null, null, null, null]
-];
-
+// March 2026 constants
 const TODAY_DAY = new Date().getDate();
+const DAYS_IN_MONTH = 31; // March 2026 has 31 days
+
+const useStateAlias = useState; // keep alias intact for existing usages below
 
 // ── Sidebar booking data type ────────────────────────────────
 interface SideBooking {
@@ -34,68 +29,106 @@ interface SideBooking {
 
 // ── Sub-components ────────────────────────────────────────────
 
-function MiniCalendar({ selectedDay, onDaySelect }: { selectedDay: number; onDaySelect: (d: number) => void }) {
-  const { t } = useLang();
+// ── WeekStrip — compact 7-day week navigator ───────────────────
+/**
+ * Shows a single row of 7 days (S M T W T F S), centered on the selected day.
+ * Prev/Next moves by 7 days.
+ */
+function WeekStrip({ selectedDay, onDaySelect }: { selectedDay: number; onDaySelect: (d: number) => void }) {
+  // Week offset relative to today’s week (in weeks)
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  // For a minimalist S M T W T F S grid:
+  // Build the 7-day array for the displayed week
   const dayLabels = ["S", "M", "T", "W", "T", "F", "S"];
+
+  // March 1, 2026 is a Sunday (dayOfWeek=0). We use March 2026 as an anchor.
+  // Compute the Monday (day 1) of the week that contains TODAY_DAY
+  const march1Dow = new Date(2026, 2, 1).getDay(); // should be 0 (Sun)
+  const todayAbsDay = TODAY_DAY + march1Dow - 1; // 0-based index in the month grid
+  const todayWeekStart = todayAbsDay - (todayAbsDay % 7); // Sunday of today’s week (0-based grid)
+
+  const weekStartGridIdx = todayWeekStart + weekOffset * 7;
+  const weekDays: (number | null)[] = Array.from({ length: 7 }, (_, i) => {
+    const d = weekStartGridIdx + i - march1Dow + 2; // +2: offset month start alignment
+    return d >= 1 && d <= DAYS_IN_MONTH ? d : null;
+  });
+
+  // Header: show range like "Mar 23–29" or month straddle
+  const firstValid = weekDays.find(d => d !== null);
+  const lastValid = [...weekDays].reverse().find(d => d !== null);
+  const headerLabel = firstValid && lastValid
+    ? `Mar ${firstValid}–${lastValid}, 2026`
+    : "March 2026";
 
   return (
     <div className="px-3 pt-3 pb-2 border-b border-gray-100">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-gray-800" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.01em" }}>
-          March 2026
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-gray-800" style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>
+          {headerLabel}
         </span>
-        <div className="flex items-center gap-2">
-          <button className="p-1 rounded-md hover:bg-gray-100 text-gray-500 transition-colors"><ChevronLeft size={16} /></button>
-          <button className="p-1 rounded-md hover:bg-gray-100 text-gray-500 transition-colors"><ChevronRight size={16} /></button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setWeekOffset(w => w - 1)}
+            className="w-7 h-7 rounded-md hover:bg-gray-100 text-gray-500 transition-colors flex items-center justify-center"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            onClick={() => setWeekOffset(0)}
+            className="px-2 h-6 rounded-md hover:bg-blue-50 text-blue-600 transition-colors flex items-center justify-center"
+            style={{ fontSize: 10, fontWeight: 700 }}
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setWeekOffset(w => w + 1)}
+            className="w-7 h-7 rounded-md hover:bg-gray-100 text-gray-500 transition-colors flex items-center justify-center"
+          >
+            <ChevronRight size={14} />
+          </button>
         </div>
       </div>
 
-      {/* Grid container */}
-      <div className="w-full max-w-[280px] mx-auto">
-        {/* Day-of-week header */}
-        <div className="grid grid-cols-7 mb-2">
-          {dayLabels.map((d, i) => (
-            <div key={i} className="text-center text-gray-400" style={{ fontSize: 12, fontWeight: 600 }}>{d}</div>
-          ))}
-        </div>
+      {/* Day labels */}
+      <div className="grid grid-cols-7 mb-1">
+        {dayLabels.map((d, i) => (
+          <div key={i} className="text-center text-gray-400" style={{ fontSize: 11, fontWeight: 600 }}>{d}</div>
+        ))}
+      </div>
 
-        {/* Days grid */}
-        <div className="grid grid-cols-7 gap-y-1">
-          {calendarGrid.flat().map((day, i) => {
-            const isToday    = day === TODAY_DAY;
-            const isSelected = day !== null && day === selectedDay;
-            const isWeekend  = i % 7 === 0 || i % 7 === 6;
-
-            return (
-              <div key={i} className="flex justify-center items-center">
-                <div
-                  onClick={() => day !== null && onDaySelect(day)}
-                  className="relative flex items-center justify-center rounded-full transition-all"
-                  style={{
-                    width: 28, height: 28, fontSize: 14, fontWeight: isSelected || isToday ? 700 : 500,
-                    cursor: day !== null ? "pointer" : "default",
-                    backgroundColor: isSelected ? "#2563eb" : "transparent",
-                    color: isSelected ? "white" : day === null ? "transparent" : isWeekend ? "#9ca3af" : "#374151",
-                    outline: isToday && !isSelected ? "2px solid #3b82f6" : "none",
-                    outlineOffset: -2,
-                  }}
-                >
-                  {day ?? ""}
-                </div>
+      {/* Day cells */}
+      <div className="grid grid-cols-7 gap-y-0.5">
+        {weekDays.map((day, i) => {
+          const isToday    = day === TODAY_DAY;
+          const isSelected = day !== null && day === selectedDay;
+          const isWeekend  = i === 0 || i === 6;
+          return (
+            <div key={i} className="flex justify-center items-center">
+              <div
+                onClick={() => day !== null && onDaySelect(day)}
+                className="relative flex items-center justify-center rounded-full transition-all"
+                style={{
+                  width: 30, height: 30, fontSize: 13,
+                  fontWeight: isSelected || isToday ? 700 : 500,
+                  cursor: day !== null ? "pointer" : "default",
+                  backgroundColor: isSelected ? "#2563eb" : isToday && !isSelected ? "#dbeafe" : "transparent",
+                  color: isSelected ? "white" : day === null ? "transparent" : isWeekend ? "#9ca3af" : isToday ? "#1d4ed8" : "#374151",
+                  outline: isToday && !isSelected ? "2px solid #3b82f6" : "none",
+                  outlineOffset: -2,
+                }}
+              >
+                {day ?? ""}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Event night legend */}
       <div
-        className="mt-1.5 mx-0.5 flex items-start gap-1.5 px-1.5 py-1 rounded-lg cursor-default"
+        className="mt-2 mx-0.5 flex items-start gap-1.5 px-1.5 py-1 rounded-lg cursor-default"
         style={{ backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0" }}
-        title={t.sidebar.eventNightDesc}
       >
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-200 border border-emerald-400 flex items-center justify-center shrink-0">
@@ -104,10 +137,10 @@ function MiniCalendar({ selectedDay, onDaySelect }: { selectedDay: number; onDay
         </div>
         <div className="min-w-0">
           <p className="text-emerald-800 truncate" style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.3 }}>
-            {t.sidebar.eventNight}
+            Chef’s Table Wednesday
           </p>
           <p className="text-emerald-600" style={{ fontSize: 8.5, lineHeight: 1.3 }}>
-            {t.sidebar.eventNightDesc}
+            Weekly recurring special event · fixed menu · fully pre-booked
           </p>
         </div>
       </div>
@@ -347,128 +380,9 @@ function DynamicBookingList({ selectedDay, onBookingClick, onIconClick }: {
   );
 }
 
-// ── Icon Legend (collapsible) ─────────────────────────────────
-function IconLegend() {
-  const [open, setOpen] = React.useState(false);
 
-  return (
-    <>
-      <div className="p-3 border-t border-gray-100 bg-gray-50 flex-shrink-0">
-        <button
-          onClick={() => setOpen(true)}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 hover:border-emerald-200 hover:text-emerald-700 transition-all text-gray-600 shadow-sm"
-          style={{ fontSize: 12, fontWeight: 600 }}
-        >
-          <Info size={14} /> View Icon Legend
-        </button>
-      </div>
 
-      {open && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={() => setOpen(false)} />
-          <div 
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden"
-            style={{ animation: "fadeInUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)" }}
-          >
-            <style>{`@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
-            
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50">
-              <div className="flex items-center gap-2.5 font-bold text-gray-800" style={{ fontSize: 14 }}>
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><Info size={12} strokeWidth={3} /></div> 
-                What do the icons mean?
-              </div>
-              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full w-7 h-7 flex items-center justify-center transition-colors"><X size={14}/></button>
-            </div>
-            
-            <div className="p-5 space-y-4 bg-white">
-              {[
-                { icon: <Settings size={14} className="text-emerald-600" />, label: "Settings", desc: "Open booking editor to modify reservations", bg: "bg-emerald-50" },
-                { icon: <MessageSquare size={14} className="text-blue-600" />, label: "Messages", desc: "Guest or staff notes and requests", bg: "bg-blue-50" },
-                { icon: <FileText size={14} className="text-purple-600" />, label: "Documents", desc: "Attached menus, receipts & forms", bg: "bg-purple-50" },
-                { icon: <Users size={14} className="text-gray-600" />, label: "Guests", desc: "Total number of guests in party", bg: "bg-gray-50" },
-              ].map(row => (
-                <div key={row.label} className="flex items-start gap-3.5 p-3 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-colors">
-                  <div className={`w-9 h-9 rounded-lg ${row.bg} flex items-center justify-center shrink-0`}>{row.icon}</div>
-                  <div>
-                    <div className="text-gray-900" style={{ fontSize: 13, fontWeight: 700 }}>{row.label}</div>
-                    <div className="text-gray-500 mt-0.5" style={{ fontSize: 12, lineHeight: 1.4 }}>{row.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-4 border-t border-gray-100 bg-gray-50 text-center flex justify-end">
-              <button 
-                onClick={() => setOpen(false)}
-                className="px-5 py-2 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors shadow-sm"
-                style={{ fontSize: 12 }}
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
 
-// ── Language toggle ───────────────────────────────────────────
-function LangToggle() {
-  const { lang, setLang, t } = useLang();
-  const isEN = lang === "en";
-  return (
-    <div className="border-t border-gray-100 px-3 py-2.5 bg-white shrink-0">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Globe size={12} className="text-gray-400" />
-          <span className="text-gray-500" style={{ fontSize: 10.5 }}>{t.sidebar.language}</span>
-        </div>
-
-        <button
-          onClick={() => setLang(lang === "en" ? "vi" : "en")}
-          className="relative flex items-center rounded-full border border-gray-200 overflow-hidden transition-all hover:border-emerald-300"
-          style={{ width: 72, height: 24, backgroundColor: "#f8fafc", padding: 2 }}
-          aria-label="Toggle language"
-        >
-          <div
-            className="absolute rounded-full transition-all duration-200"
-            style={{
-              width: 32, height: 18,
-              backgroundColor: "#10b981",
-              left: isEN ? 2 : 36,
-              top: 2,
-              boxShadow: "0 1px 3px rgba(16,185,129,0.35)",
-            }}
-          />
-          <span
-            className="relative z-10 transition-colors duration-200"
-            style={{
-              width: 34, textAlign: "center", fontSize: 10, fontWeight: 700,
-              color: isEN ? "white" : "#9ca3af",
-              letterSpacing: "0.03em",
-            }}
-          >
-            EN
-          </span>
-          <span
-            className="relative z-10 transition-colors duration-200"
-            style={{
-              width: 34, textAlign: "center", fontSize: 10, fontWeight: 700,
-              color: !isEN ? "white" : "#9ca3af",
-              letterSpacing: "0.03em",
-            }}
-          >
-            VI
-          </span>
-        </button>
-      </div>
-
-      <div className="mt-1 text-center">
-        <span className="text-gray-400" style={{ fontSize: 9.5 }}>{t.sidebar.langFull}</span>
-      </div>
-    </div>
-  );
-}
 
 // ── Main export ───────────────────────────────────────────────
 const MIN_WIDTH = 256;
@@ -527,7 +441,7 @@ export function LeftSidebar({ onOpenSettings, onBookingClick, onIconClick, selec
     >
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
-        <MiniCalendar selectedDay={selectedDay} onDaySelect={onDaySelect} />
+        <WeekStrip selectedDay={selectedDay} onDaySelect={onDaySelect} />
         <BookingStatusBar
           onOpenSettings={onOpenSettings}
           statsOpen={statsOpen}
@@ -537,12 +451,6 @@ export function LeftSidebar({ onOpenSettings, onBookingClick, onIconClick, selec
         {/* Time-grouped booking list — dynamic from selectedDay */}
         <DynamicBookingList selectedDay={selectedDay} onBookingClick={onBookingClick} onIconClick={onIconClick} />
       </div>
-
-      {/* Icon Legend — global reference placed above language toggle */}
-      <IconLegend />
-
-      {/* Language toggle — pinned to bottom */}
-      <LangToggle />
 
       {/* ── Drag resize handle ── */}
       <div

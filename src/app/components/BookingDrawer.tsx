@@ -304,6 +304,7 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot, selecte
                         </button>
                         <input type="number" min={1} value={guests} onChange={e => { const val = parseInt(e.target.value, 10); if (!isNaN(val) && val >= 1) setGuests(val); else if (e.target.value === "") setGuests(0); }}
                           onBlur={() => { if (guests < 1) setGuests(1); }}
+                          inputMode="numeric" pattern="[0-9]*"
                           className={`w-12 min-w-0 flex-1 border border-gray-200 px-2 text-center text-gray-800 focus:outline-none focus:border-emerald-400 focus:z-10 relative bg-white`}
                           style={{ fontSize: 14, fontWeight: 600, height: 40 }} />
                         <button onClick={() => setGuests(g => g + 1)} className="w-10 h-10 rounded-r-lg border border-gray-200 border-l-0 flex items-center justify-center text-gray-500 hover:bg-gray-50 shrink-0 bg-white">
@@ -398,7 +399,7 @@ export function BookingDrawer({ open, onClose, initialType, initialSlot, selecte
                         <Field label="Phone Look-up">
                           <div className="relative">
                             <Phone size={14} className="absolute text-gray-400 left-3 top-1/2 -translate-y-1/2" />
-                            <input value={phone} onChange={e => setPhone(e.target.value)} className={inputClass} style={{ paddingLeft: 34, fontSize: 13 }} placeholder="+1..." />
+                            <input value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" className={inputClass} style={{ paddingLeft: 34, fontSize: 13 }} placeholder="+1..." />
                           </div>
                         </Field>
                         <Field label="Full Name">

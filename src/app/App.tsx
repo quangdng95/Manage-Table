@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Menu, BarChart2, List,
-  Plus, UserPlus, LayoutGrid,
-  Sun, Utensils, Moon, Calendar, Clock,
+  LayoutGrid,
+  Sun, Utensils, Moon, Calendar,
+  Search, Bell, Plus, UserPlus,
+  Mic, Maximize, Minimize, PowerOff,
+  ReceiptText, ShoppingCart, BookOpen, Table2, MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { LanguageProvider, useLang } from "./context/LanguageContext";
 import { LeftSidebar } from "./components/LeftSidebar";
@@ -20,121 +24,356 @@ import { SettingsPage, type SettingsView } from "./components/SettingsPage";
 
 type NavTab = "Bookings" | "CRM" | "Archive";
 
-function TopNav({ activeTab, setActiveTab, onProfile, onSettings, hideActiveTab }: {
-  activeTab: NavTab;
-  setActiveTab: (t: NavTab) => void;
-  onProfile: () => void;
-  onSettings: () => void;
-  hideActiveTab: boolean;
-}) {
-  const { t } = useLang();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuAnchorRef = useRef<HTMLDivElement>(null);
+// ── Add New Smart Dropdown ──────────────────────────────────────
+interface AddNewDropdownProps {
+  onNewBooking: () => void;
+  onWalkIn: () => void;
+  onClose: () => void;
+}
+function AddNewDropdown({ onNewBooking, onWalkIn, onClose }: AddNewDropdownProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
+  }, [onClose]);
 
   return (
-    <div className="flex items-center border-b border-gray-200 bg-white shrink-0 relative" style={{ height: 40, paddingLeft: 12, paddingRight: 12 }}>
-      {/* ── Logo ── */}
-      <div className="flex items-center mr-8" style={{ width: 116, height: 32 }}>
-        <LogoPlaceholder />
+    <div
+      ref={ref}
+      className="absolute right-0 top-full mt-2 z-[200] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
+      style={{ width: 220, animation: "addNewIn 0.15s cubic-bezier(0.34,1.4,0.64,1)" }}
+    >
+      <style>{`@keyframes addNewIn { from { opacity:0; transform:scale(0.93) translateY(-6px);} to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
+      <div className="px-3.5 py-2.5 border-b border-gray-100 bg-gray-50">
+        <p className="text-gray-700" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Create New</p>
       </div>
-
-      {/* ── Nav tabs ── */}
-      <nav className="flex items-center">
-        {([
-          { id: "Bookings", label: t.nav.bookings },
-          { id: "CRM",      label: t.nav.crm      },
-          { id: "Archive",  label: t.nav.archive  },
-        ] as { id: NavTab; label: string }[]).map(item => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`px-3 h-10 transition-colors relative ${!hideActiveTab && activeTab === item.id ? "text-emerald-600 font-medium" : "text-gray-600 hover:text-gray-800"}`}
-            style={{ fontSize: 13 }}
-          >
-            {item.label}
-            {!hideActiveTab && activeTab === item.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />}
-          </button>
-        ))}
-      </nav>
-
-      {/* ── Right side: restaurant name + menu ── */}
-      <div className="ml-auto flex items-center gap-3">
-        {/* Restaurant name — no dropdown arrow */}
-        <span className="text-gray-700" style={{ fontSize: 13, fontWeight: 500 }}>
-          Quang Nguyen
-        </span>
-
-        {/* Hamburger / menu button */}
-        <div ref={menuAnchorRef} className="relative">
-          <button
-            onClick={() => setMenuOpen(v => !v)}
-            className={`flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${menuOpen ? "bg-gray-100 text-gray-800" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}
-            aria-label="Open menu"
-          >
-            <Menu size={16} />
-          </button>
-
-          {/* Dropdown */}
-          {menuOpen && (
-            <UserMenuDropdown
-              onClose={() => setMenuOpen(false)}
-              onProfile={onProfile}
-              onSettings={onSettings}
-            />
-          )}
-        </div>
+      <div className="p-2 space-y-1.5">
+        <button
+          onClick={() => { onNewBooking(); onClose(); }}
+          className="w-full flex items-center gap-3 p-2.5 rounded-xl border-2 border-emerald-500 hover:bg-emerald-50 transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#10b981" }}>
+            <Plus size={14} color="white" />
+          </div>
+          <div>
+            <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 600 }}>New Booking</div>
+            <div className="text-gray-500" style={{ fontSize: 10.5 }}>Schedule a reservation</div>
+          </div>
+          <span className="ml-auto px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>PLAN</span>
+        </button>
+        <button
+          onClick={() => { onWalkIn(); onClose(); }}
+          className="w-full flex items-center gap-3 p-2.5 rounded-xl border-2 border-blue-400 hover:bg-blue-50 transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+            <UserPlus size={14} color="white" />
+          </div>
+          <div>
+            <div className="text-gray-800" style={{ fontSize: 12, fontWeight: 600 }}>Walk-in</div>
+            <div className="text-gray-500" style={{ fontSize: 10.5 }}>Seat a guest right now</div>
+          </div>
+          <span className="ml-auto px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0" style={{ fontSize: 9, fontWeight: 700 }}>NOW</span>
+        </button>
       </div>
     </div>
   );
 }
 
-interface BookingsHeaderProps {
-  liveTime: string;
-  selectedDay: number;
+// ── Global Top Header ───────────────────────────────────────────
+interface GlobalHeaderProps {
   onNewBooking: () => void;
   onWalkIn: () => void;
 }
-function BookingsHeader({ liveTime, selectedDay, onNewBooking, onWalkIn }: BookingsHeaderProps) {
-  const { lang, t } = useLang();
-  
-  const d = new Date();
-  d.setDate(selectedDay);
-  const dateStr = new Intl.DateTimeFormat(lang === "vi" ? "vi-VN" : "en-US", {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-  }).format(d);
-  
-  // Format liveTime cleanly
-  const timeStr = liveTime.match(/^\d+:\d+/) ? liveTime.match(/^\d+:\d+/)?.[0] : liveTime;
+function GlobalHeader({ onNewBooking, onWalkIn }: GlobalHeaderProps) {
+  const [addNewOpen,  setAddNewOpen]  = useState(false);
+  const [searchVal,   setSearchVal]   = useState("");
 
   return (
-    <header className="h-16 flex items-center justify-between px-6 border-b border-gray-100 bg-white">
-      <div className="flex items-center gap-4">
-        <h1 className="text-gray-900 leading-none" style={{ fontSize: 16, fontWeight: 600 }}>{dateStr}</h1>
-          <div className="flex items-center gap-1 mt-0.5">
-            <Clock size={10} className="text-emerald-500" />
-            <span className="text-emerald-600 tabular-nums" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" }}>{liveTime}</span>
-            <span className="text-gray-400 ml-1" style={{ fontSize: 10 }}>{t.header.live}</span>
+    <header
+      className="shrink-0 flex items-center border-b border-gray-200 bg-white relative"
+      style={{ height: 52, paddingLeft: 14, paddingRight: 14 }}
+    >
+      {/* ── Logo ── */}
+      <div className="flex items-center mr-5" style={{ width: 104, height: 32, flexShrink: 0 }}>
+        <LogoPlaceholder />
+      </div>
+
+      {/* ── Shift info ── */}
+      <div className="flex items-center gap-2 mr-5 py-1.5" style={{ flexShrink: 0 }}>
+        {/* Avatar */}
+        <div
+          className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: "linear-gradient(135deg, #0d9488, #10b981)", fontSize: 9, fontWeight: 800, color: "white" }}
+        >
+          QN
+        </div>
+        <div style={{ lineHeight: 1.2 }}>
+          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 500 }}>Shift opened by</div>
+          <div style={{ fontSize: 11, color: "#111827", fontWeight: 700, whiteSpace: "nowrap" }}>
+            QuangNguyên
+            <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 5 }}>· 15:30 31/10/2023</span>
           </div>
-        <div className="h-8 w-px bg-gray-100 mx-1" />
-        <button
-          onClick={onNewBooking}
-          className="flex items-center gap-1.5 text-white rounded-lg px-3 py-1.5 hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: "#10b981", fontSize: 12 }}
+        </div>
+      </div>
+
+      <div className="flex-1" />
+
+      {/* ── Right actions ── */}
+      <div className="flex items-center gap-2 ml-4" style={{ flexShrink: 0 }}>
+
+        {/* Search bar */}
+        <div
+          className="flex items-center gap-2 rounded-lg px-2.5"
+          style={{ backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", height: 32, width: 180 }}
         >
-          <Plus size={13} /> {t.header.newBooking}
-        </button>
+          <Search size={12} style={{ color: "#9ca3af", flexShrink: 0 }} />
+          <input
+            value={searchVal}
+            onChange={e => setSearchVal(e.target.value)}
+            placeholder="Type to search…"
+            className="flex-1 bg-transparent outline-none min-w-0"
+            style={{ fontSize: 12, color: "#111827", caretColor: "#10b981" }}
+          />
+          <Mic size={11} style={{ color: "#9ca3af", flexShrink: 0, cursor: "pointer" }} />
+        </div>
+
+        {/* Bell */}
         <button
-          onClick={onWalkIn}
-          className="flex items-center gap-1.5 text-white rounded-lg px-3 py-1.5 hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: "#3b82f6", fontSize: 12 }}
+          className="flex items-center justify-center rounded-lg transition-colors relative hover:bg-gray-50"
+          style={{ width: 32, height: 32, backgroundColor: "transparent", border: "1px solid #e5e7eb", color: "#6b7280" }}
+          aria-label="Notifications"
         >
-          <UserPlus size={13} /> {t.header.walkIn}
+          <Bell size={14} />
+          {/* badge */}
+          <span
+            className="absolute rounded-full flex items-center justify-center"
+            style={{ width: 8, height: 8, backgroundColor: "#f43f5e", top: 5, right: 5, fontSize: 6, color: "white", fontWeight: 700 }}
+          />
         </button>
+
+        {/* Add New button */}
+        <div className="relative">
+          <button
+            onClick={() => setAddNewOpen(v => !v)}
+            className="flex items-center gap-1.5 rounded-lg font-semibold transition-all duration-150 hover:opacity-90 active:scale-95"
+            style={{
+              height: 32,
+              paddingLeft: 12,
+              paddingRight: 10,
+              fontSize: 12,
+              background: "linear-gradient(135deg, #0d9488, #10b981)",
+              color: "white",
+              boxShadow: "0 2px 8px rgba(16,185,129,0.35)",
+            }}
+          >
+            <Plus size={13} />
+            Add New
+            <ChevronDown size={11} style={{ opacity: 0.8, marginLeft: 1 }} />
+          </button>
+
+          {addNewOpen && (
+            <AddNewDropdown
+              onNewBooking={onNewBooking}
+              onWalkIn={onWalkIn}
+              onClose={() => setAddNewOpen(false)}
+            />
+          )}
+        </div>
       </div>
     </header>
   );
 }
 
+// ── Sub Nav (Bookings | CRM | Archive) ─────────────────────────
+interface SubNavProps {
+  activeTab: NavTab;
+  setActiveTab: (t: NavTab) => void;
+}
+function SubNav({ activeTab, setActiveTab }: SubNavProps) {
+  const { t } = useLang();
+  return (
+    <div className="flex items-center gap-6 px-6 border-b border-gray-100 bg-white shrink-0" style={{ height: 44 }}>
+      {([
+        { id: "Bookings", label: t.nav.bookings },
+        { id: "CRM",      label: t.nav.crm      },
+        { id: "Archive",  label: t.nav.archive  },
+      ] as { id: NavTab; label: string }[]).map(item => {
+        const isActive = activeTab === item.id;
+        return (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className="relative h-full transition-colors flex items-center"
+            style={{
+              fontSize: 13,
+              fontWeight: isActive ? 600 : 500,
+              color: isActive ? "#10b981" : "#6b7280",
+            }}
+          >
+            {item.label}
+            {isActive && (
+              <div
+                className="absolute bottom-0 left-0 right-0"
+                style={{ height: 2, backgroundColor: "#10b981" }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Global POS Footer ───────────────────────────────────────────
+type PosTab = "Order" | "Reservation" | "Tables" | "Receipt" | "More";
+
+interface GlobalFooterProps {
+  onProfile: () => void;
+  onSettings: () => void;
+}
+
+function GlobalFooter({ onProfile, onSettings }: GlobalFooterProps) {
+  const [activeFooterTab, setActiveFooterTab] = useState<PosTab>("Reservation");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
+  }
+
+  useEffect(() => {
+    function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const FOOTER_TABS: { id: PosTab; icon: React.ElementType; label: string }[] = [
+    { id: "Order",       icon: ShoppingCart,   label: "Order"       },
+    { id: "Reservation", icon: BookOpen,       label: "Reservation" },
+    { id: "Tables",      icon: Table2,         label: "Tables"      },
+    { id: "Receipt",     icon: ReceiptText,    label: "Receipt"     },
+    { id: "More",        icon: Menu,           label: "More"        },
+  ];
+
+  return (
+    <footer
+      className="shrink-0 flex items-center border-t border-gray-200 bg-white"
+      style={{
+        height: 52,
+        paddingLeft: 14,
+        paddingRight: 14,
+      }}
+    >
+      {/* ── Left: Close Shift ── */}
+      <button
+        className="flex items-center gap-2 rounded-lg transition-all hover:opacity-80 active:scale-95"
+        style={{
+          height: 34,
+          paddingLeft: 12,
+          paddingRight: 14,
+          fontSize: 12,
+          fontWeight: 600,
+          backgroundColor: "#fef2f2",
+          border: "1px solid #fecaca",
+          color: "#ef4444",
+          flexShrink: 0,
+        }}
+        aria-label="Close shift"
+      >
+        <PowerOff size={13} />
+        Close Shift
+      </button>
+
+      {/* ── Divider ── */}
+      <div style={{ width: 1, height: 28, backgroundColor: "#e5e7eb", margin: "0 16px", flexShrink: 0 }} />
+
+      {/* ── Center: POS nav tabs ── */}
+      <div className="flex items-center gap-1 flex-1 justify-center relative">
+        {FOOTER_TABS.map(tab => {
+          const isMore = tab.id === "More";
+          // "More" doesn't become the active tab, it's just a trigger
+          const isActive = !isMore && activeFooterTab === tab.id;
+          const isMenuTriggerActive = isMore && menuOpen;
+          const Icon = tab.icon;
+
+          return (
+            <div key={tab.id} className="relative">
+              <button
+                onClick={() => {
+                  if (isMore) {
+                    setMenuOpen(v => !v);
+                  } else {
+                    setActiveFooterTab(tab.id);
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-lg transition-all duration-150 active:scale-95"
+                style={{
+                  height: 36,
+                  paddingLeft: 14,
+                  paddingRight: 14,
+                  fontSize: 12,
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? "#10b981" : (isMenuTriggerActive ? "#1f2937" : "#6b7280"),
+                  backgroundColor: isActive ? "#ecfdf5" : (isMenuTriggerActive ? "#f3f4f6" : "transparent"),
+                  border: isActive ? "1px solid #a7f3d0" : "1px solid transparent",
+                }}
+              >
+                <Icon size={13} />
+                {tab.label}
+              </button>
+              
+              {/* If this is the "More" tab, anchor the dropdown here */}
+              {isMore && menuOpen && (
+                <UserMenuDropdown
+                  onClose={() => setMenuOpen(false)}
+                  onProfile={() => { setMenuOpen(false); onProfile(); }}
+                  onSettings={() => { setMenuOpen(false); onSettings(); }}
+                  position="top"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Divider ── */}
+      <div style={{ width: 1, height: 28, backgroundColor: "#e5e7eb", margin: "0 16px", flexShrink: 0 }} />
+
+      {/* ── Right: Full-screen toggle ── */}
+      <button
+        onClick={toggleFullscreen}
+        className="flex items-center gap-1.5 rounded-lg transition-all hover:bg-gray-50 active:scale-95"
+        style={{
+          height: 34,
+          paddingLeft: 10,
+          paddingRight: 12,
+          fontSize: 12,
+          fontWeight: 500,
+          backgroundColor: "white",
+          border: "1px solid #e5e7eb",
+          color: "#6b7280",
+          flexShrink: 0,
+        }}
+        aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+      >
+        {isFullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
+        {isFullscreen ? "Exit" : "Full Screen"}
+      </button>
+    </footer>
+  );
+}
+
+// ── View Controls (Show / Time toggles) ────────────────────────
 interface ViewControlsProps {
   activeView: string; setActiveView: (v: string) => void;
   activeTime: string; setActiveTime: (t: string) => void;
@@ -194,33 +433,33 @@ function ViewControls({ activeView, setActiveView, activeTime, setActiveTime }: 
   );
 }
 
+// ── App Inner ───────────────────────────────────────────────────
 function AppInner() {
   const { t } = useLang();
-  const [activeTab,       setActiveTab]       = useState<NavTab>("Bookings");
-  const [activeView,      setActiveView]      = useState("Diagram");
-  const [activeTime,      setActiveTime]      = useState("All");
-  const [drawerOpen,      setDrawerOpen]      = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<{ id: number; tab?: string } | null>(null);
+  const [activeTab,         setActiveTab]         = useState<NavTab>("Bookings");
+  const [activeView,        setActiveView]        = useState("Diagram");
+  const [activeTime,        setActiveTime]        = useState("All");
+  const [drawerOpen,        setDrawerOpen]        = useState(false);
+  const [selectedBooking,   setSelectedBooking]   = useState<{ id: number; tab?: string } | null>(null);
   const [bookingDrawerOpen, setBookingDrawerOpen] = useState(false);
   const [bookingDrawerType, setBookingDrawerType] = useState<"walk-in" | "reservation">("reservation");
   const [bookingDrawerSlot, setBookingDrawerSlot] = useState<SlotInfo | undefined>(undefined);
-  const [selectedDay,     setSelectedDay]     = useState(new Date().getDate());
-  const [settingsView,    setSettingsView]    = useState<SettingsView | null>(null);
-  const [forceRender,     setForceRender]     = useState(0);
+  const [selectedDay,       setSelectedDay]       = useState(new Date().getDate());
+  const [settingsView,      setSettingsView]      = useState<SettingsView | null>(null);
+  const [forceRender,       setForceRender]       = useState(0);
 
-  const [liveTime, setLiveTime] = useState(() => {
-    const now = new Date();
-    return now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  });
-  useEffect(() => {
-    const id = setInterval(() => {
-      setLiveTime(new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  function handleBookingClick(id: number) { setSelectedBooking({ id, tab: "overview" }); }
-  function handleIconClick(id: number, tab: string) { setSelectedBooking({ id, tab }); }
+  function handleNewBooking() {
+    setBookingDrawerType("reservation");
+    setBookingDrawerSlot(undefined);
+    setBookingDrawerOpen(true);
+  }
+  function handleWalkIn() {
+    setBookingDrawerType("walk-in");
+    setBookingDrawerSlot(undefined);
+    setBookingDrawerOpen(true);
+  }
+  function handleBookingClick(id: number)             { setSelectedBooking({ id, tab: "overview" }); }
+  function handleIconClick(id: number, tab: string)   { setSelectedBooking({ id, tab }); }
   function handleSlotNewBooking(slot: SlotInfo) {
     setBookingDrawerType("reservation");
     setBookingDrawerSlot(slot);
@@ -237,57 +476,73 @@ function AppInner() {
   }
 
   return (
-    <div className="flex flex-col bg-white" style={{ height: "100vh", overflow: "hidden", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <TopNav
-        activeTab={activeTab}
-        setActiveTab={(tab) => { setSettingsView(null); setActiveTab(tab); }}
-        onProfile={() => setSettingsView("profile")}
-        onSettings={() => setSettingsView("settings")}
-        hideActiveTab={settingsView !== null}
+    <div
+      className="flex flex-col bg-gray-50"
+      style={{ height: "100vh", overflow: "hidden", fontFamily: "'Inter', system-ui, sans-serif" }}
+    >
+      {/* ── Global Top Header ── */}
+      <GlobalHeader
+        onNewBooking={handleNewBooking}
+        onWalkIn={handleWalkIn}
       />
 
-      {/* ── Settings / Profile overlay ── */}
-      {settingsView !== null && (
-        <SettingsPage initialView={settingsView} onBack={() => setSettingsView(null)} />
+      {/* ── Sub Navigation ── */}
+      {settingsView === null && (
+        <SubNav activeTab={activeTab} setActiveTab={setActiveTab} />
       )}
 
-      {settingsView === null && activeTab === "CRM" && <CRMView />}
+      {/* ── Main content (fills space between header/subnav & footer) ── */}
+      <div className="flex flex-col flex-1 overflow-hidden min-h-0">
 
-      {settingsView === null && activeTab === "Archive" && (
-        <div className="flex-1 flex items-center justify-center text-gray-400 bg-gray-50 flex-col gap-3">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
-            <Calendar size={28} className="text-gray-300" />
+        {/* Settings / Profile overlay */}
+        {settingsView !== null && (
+          <SettingsPage initialView={settingsView} onBack={() => setSettingsView(null)} />
+        )}
+
+        {settingsView === null && activeTab === "CRM" && <CRMView />}
+
+        {settingsView === null && activeTab === "Archive" && (
+          <div className="flex-1 flex items-center justify-center text-gray-400 bg-gray-50 flex-col gap-3">
+            <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+              <Calendar size={28} className="text-gray-300" />
+            </div>
+            <p style={{ fontSize: 15 }}>{t.archive.title}</p>
+            <p className="text-gray-400" style={{ fontSize: 12 }}>{t.archive.subtitle}</p>
           </div>
-          <p style={{ fontSize: 15 }}>{t.archive.title}</p>
-          <p className="text-gray-400" style={{ fontSize: 12 }}>{t.archive.subtitle}</p>
-        </div>
-      )}
+        )}
 
-      {settingsView === null && activeTab === "Bookings" && (
-        <div className="flex flex-1 overflow-hidden min-h-0">
-          <LeftSidebar
-            onOpenSettings={() => setDrawerOpen(true)}
-            onBookingClick={handleBookingClick}
-            onIconClick={handleIconClick}
-            selectedDay={selectedDay}
-            onDaySelect={setSelectedDay}
-          />
-          <main className="flex flex-col flex-1 overflow-hidden min-h-0 min-w-0 bg-white">
-            <BookingsHeader 
-              liveTime={liveTime} 
+        {settingsView === null && activeTab === "Bookings" && (
+          <div className="flex flex-1 overflow-hidden min-h-0 bg-white">
+            <LeftSidebar
+              onOpenSettings={() => setDrawerOpen(true)}
+              onBookingClick={handleBookingClick}
+              onIconClick={handleIconClick}
               selectedDay={selectedDay}
-              onNewBooking={() => { setBookingDrawerType("reservation"); setBookingDrawerSlot(undefined); setBookingDrawerOpen(true); }} 
-              onWalkIn={() => { setBookingDrawerType("walk-in"); setBookingDrawerSlot(undefined); setBookingDrawerOpen(true); }} 
+              onDaySelect={setSelectedDay}
             />
-            <ViewControls activeView={activeView} setActiveView={setActiveView} activeTime={activeTime} setActiveTime={setActiveTime} />
-            {activeView === "Diagram"   && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} />}
-            {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onUpdateStatus={handleUpdateStatus} forceRender={forceRender} />}
-            {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} onWalkinRequest={(tables, time) => { if(!tables.length) return; setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: tables[0].section as any, table: tables[0].table, additionalTables: tables.length > 1 ? tables.slice(1).map(t=>({section: t.section as any, table: t.table})) : undefined, timeSlot: time }); setBookingDrawerOpen(true); }} />}
-          </main>
-        </div>
-      )}
+            <main className="flex flex-col flex-1 overflow-hidden min-h-0 min-w-0 bg-white">
+              {/* ViewControls sit directly at the top — sub-header removed */}
+              <ViewControls
+                activeView={activeView}
+                setActiveView={setActiveView}
+                activeTime={activeTime}
+                setActiveTime={setActiveTime}
+              />
+              {activeView === "Diagram"   && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} />}
+              {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onUpdateStatus={handleUpdateStatus} forceRender={forceRender} />}
+              {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} onWalkinRequest={(tables, time) => { if (!tables.length) return; setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: tables[0].section as any, table: tables[0].table, additionalTables: tables.length > 1 ? tables.slice(1).map(t => ({ section: t.section as any, table: t.table })) : undefined, timeSlot: time }); setBookingDrawerOpen(true); }} />}
+            </main>
+          </div>
+        )}
+      </div>
 
+      {/* ── Global POS Footer ── */}
+      <GlobalFooter
+        onProfile={() => setSettingsView("profile")}
+        onSettings={() => setSettingsView("settings")}
+      />
 
+      {/* ── Global overlays / drawers / modals ── */}
       <BookingSettingsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <BookingDetailModal
         selectedDay={selectedDay}

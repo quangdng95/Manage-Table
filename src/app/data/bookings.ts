@@ -7,12 +7,15 @@ export interface TableAssignment {
   table: number;
 }
 
+export type BookingType = "dine-in" | "banquet";
+export type BanquetSubtype = "1st Birthday" | "Birthday" | "Company" | "Wedding" | "Other";
+
 export interface Booking {
   id: number;
   time: string;
   endTime: string;
   section: Section;
-  table: number;
+  table: number;          // 0 = Unassigned / Waitlist
   guestName: string;
   guests: number;
   status: Status;
@@ -23,6 +26,12 @@ export interface Booking {
   additionalTables?: TableAssignment[];
   /** HH:MM — recorded when status transitions to 'seated'. Used for split-color late rendering. */
   actualSeatedTime?: string;
+  /** Guest contact phone — display masked in UI */
+  phone?: string;
+  /** Meal type — dine-in vs banquet function */
+  bookingType?: BookingType;
+  /** Banquet sub-category — only meaningful when bookingType === 'banquet' */
+  banquetSubtype?: BanquetSubtype;
 }
 
 export const PERIOD_THEMES = {
@@ -143,7 +152,12 @@ export const ALL_BOOKINGS: Booking[] = [
   { id: 312, time: "19:00", endTime: "20:00", section: "Restaurant", table: 2, guestName: "Noah Garcia", guests: 4, status: "awaitingconfirm", tags: ["Tasting menu"], hasNote: false, hasFile: false, period: "evening" },
   { id: 313, time: "19:00", endTime: "20:30", section: "First floor", table: 7, guestName: "Ava Thompson", guests: 8, status: "awaitingconfirm", tags: ["Anniversary ❤️"], hasNote: true, hasFile: true, period: "evening" },
   { id: 314, time: "19:30", endTime: "21:00", section: "Terrace", table: 3, guestName: "Liam Wilson", guests: 5, status: "awaitingconfirm", tags: ["VIP ⭐", "Wine pairing"], hasNote: true, hasFile: false, period: "evening" },
-  { id: 315, time: "20:00", endTime: "21:30", section: "Restaurant", table: 6, guestName: "Emma Davis", guests: 2, status: "awaitingconfirm", tags: ["Birthday 🎂"], hasNote: false, hasFile: false, period: "evening" },
+  { id: 315, time: "20:00", endTime: "21:30", section: "Restaurant", table: 6, guestName: "Emma Davis", guests: 2, status: "awaitingconfirm", tags: ["Birthday 🎂"], hasNote: false, hasFile: false, period: "evening", phone: "+84 97 *** 8812", bookingType: "banquet", banquetSubtype: "Birthday" },
+
+  // ── UNASSIGNED (Waitlist) — table: 0 ───────────────────────
+  { id: 401, time: "18:00", endTime: "19:30", section: "Restaurant", table: 0, guestName: "Pending — Nguyen Family", guests: 6, status: "reserved", tags: ["VIP ⭐"], hasNote: true, hasFile: false, period: "evening", phone: "+84 90 *** 4321", bookingType: "dine-in" },
+  { id: 402, time: "19:00", endTime: "20:30", section: "Restaurant", table: 0, guestName: "Pending — Chen Group", guests: 10, status: "awaitingconfirm", tags: ["Birthday 🎂", "Anniversary ❤️"], hasNote: false, hasFile: false, period: "evening", phone: "+84 91 *** 7788", bookingType: "banquet", banquetSubtype: "Birthday" },
+  { id: 403, time: "20:00", endTime: "21:00", section: "Restaurant", table: 0, guestName: "Pending — Smith Co.", guests: 8, status: "reserved", tags: ["Corporate", "Business"], hasNote: true, hasFile: true, period: "evening", phone: "+84 93 *** 5566", bookingType: "banquet", banquetSubtype: "Company" },
 ];
 
 export const STATUS_META: Record<Status, { label: string; shortLabel: string; color: string; bg: string; dot: string }> = {

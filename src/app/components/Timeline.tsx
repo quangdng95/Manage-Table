@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Search, X, MessageSquare, FileText,
   ChevronDown, ChevronRight, Plus, Zap, Info, Clock,
+  Settings, Users,
 } from "lucide-react";
 import { ALL_BOOKINGS, STATUS_META, getBookingsForDay, getBookingTimeState, type Booking } from "../data/bookings";
 import { useLang } from "../context/LanguageContext";
@@ -37,6 +38,21 @@ const SECTIONS = [
   { name: "Terrace",     tables: [2,3,5,10] },
   { name: "Bar",         tables: [6,8] },
 ];
+
+// ── Booking type helpers ───────────────────────────────────────────────────────
+const BANQUET_ICONS: Record<string, string> = {
+  "1st Birthday": "🍰",
+  "Birthday":     "🎂",
+  "Company":      "🏢",
+  "Wedding":      "💍",
+  "Other":        "✨",
+};
+function bookingTypeLabel(b: { bookingType?: string; banquetSubtype?: string }, wide: boolean): string | null {
+  if (!b.bookingType) return null;
+  if (b.bookingType === "dine-in") return wide ? "🍽️ D-in" : "🍽️";
+  const icon = b.banquetSubtype ? (BANQUET_ICONS[b.banquetSubtype] ?? "🎊") : "🎊";
+  return wide && b.banquetSubtype ? `${icon} ${b.banquetSubtype}` : icon;
+}
 
 // ── Status colors — driven from STATUS_META (single source of truth) ─────────
 const LATE_COLOR       = "#F44336";  // Red for overdue Reserved/AwaitingConfirm
@@ -222,6 +238,83 @@ function SlotPopup({ slot, nowMin, onNewBooking, onWalkIn, onClose }: SlotPopupP
     );
   }
 
+// ── Unified Legend Modal ──────────────────────────────────────
+function UnifiedLegendModal() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+        style={{ fontSize: 11, fontWeight: 600 }}
+      >
+        <Info size={13} />
+        (i) Click to view Legend
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={() => setOpen(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-2 font-bold text-gray-800" style={{ fontSize: 14 }}>
+                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><Info size={12} strokeWidth={3} /></div> 
+                Unified Legend
+              </div>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full w-7 h-7 flex items-center justify-center transition-colors"><X size={14}/></button>
+            </div>
+            
+            <div className="p-5 space-y-6 bg-white overflow-y-auto max-h-[70vh]">
+              {/* Status Colors */}
+              <div>
+                <h4 className="text-gray-900 font-bold mb-3" style={{ fontSize: 12 }}>Booking Status</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["awaitingconfirm","reserved","seated","waitingpayment","completed","noshow","cancelled"] as const).map(s => (
+                    <div key={s} className="flex items-center gap-2">
+                       <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: STATUS_META[s].dot }} />
+                       <span className="text-gray-600" style={{ fontSize: 11 }}>{STATUS_META[s].label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Icon Legend */}
+              <div>
+                <h4 className="text-gray-900 font-bold mb-3" style={{ fontSize: 12 }}>Icons</h4>
+                <div className="space-y-3">
+                  {[
+                    { icon: <Settings size={14} className="text-emerald-600" />, label: "Settings", desc: "Open booking editor to modify reservations", bg: "bg-emerald-50" },
+                    { icon: <MessageSquare size={14} className="text-blue-600" />, label: "Messages", desc: "Guest or staff notes and requests", bg: "bg-blue-50" },
+                    { icon: <FileText size={14} className="text-purple-600" />, label: "Documents", desc: "Attached menus, receipts & forms", bg: "bg-purple-50" },
+                    { icon: <Users size={14} className="text-gray-600" />, label: "Guests", desc: "Total number of guests in party", bg: "bg-gray-50" },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-start gap-3 p-2 rounded-lg bg-gray-50 border border-gray-100">
+                      <div className={`w-8 h-8 rounded-md ${row.bg} flex items-center justify-center shrink-0`}>{row.icon}</div>
+                      <div>
+                        <div className="text-gray-900" style={{ fontSize: 12, fontWeight: 700 }}>{row.label}</div>
+                        <div className="text-gray-500 mt-0.5" style={{ fontSize: 11, lineHeight: 1.3 }}>{row.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 text-right">
+              <button 
+                onClick={() => setOpen(false)}
+                className="px-5 py-2 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors shadow-sm text-xs"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Props ─────────────────────────────────────────────────────
 export interface SlotInfo {
   section: string;
@@ -253,6 +346,27 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
   const [hoveredId, setHoveredId] = useState<number|null>(null);
   const scrollRef                 = useRef<HTMLDivElement>(null);
   const gridRef                   = useRef<HTMLDivElement>(null);
+
+  // Tablet Long Press Drag state
+  const [draggableIds, setDraggableIds] = useState<Set<number>>(new Set());
+  const dragTimers = useRef<Record<number, number>>({});
+
+  const startDragTimer = (id: number) => {
+    dragTimers.current[id] = window.setTimeout(() => {
+      setDraggableIds(prev => new Set(prev).add(id));
+    }, 300);
+  };
+  const cancelDragTimer = (id: number) => {
+    if (dragTimers.current[id]) {
+      window.clearTimeout(dragTimers.current[id]);
+      delete dragTimers.current[id];
+    }
+    setDraggableIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
 
   // Drag to resize state
   const [dragState, setDragState] = useState<{ id: number; field: "time"|"endTime"; originalMins: number; startX: number; pointerId: number } | null>(null);
@@ -328,6 +442,14 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
   // Filter bookings by day then by period/time window
   const dayBookings = getBookingsForDay(day);
   const visibleBookings = dayBookings.filter(b => {
+    if (b.table === 0) return false; // handled by Unassigned row
+    if (period === "All") return true;
+    return timeToMin(b.time) < END_MIN && timeToMin(b.endTime) > START_MIN;
+  });
+
+  // Unassigned / waitlist bookings (table === 0)
+  const unassignedBookings = dayBookings.filter(b => {
+    if (b.table !== 0) return false;
     if (period === "All") return true;
     return timeToMin(b.time) < END_MIN && timeToMin(b.endTime) > START_MIN;
   });
@@ -378,57 +500,34 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-white relative" style={{ minHeight: 0 }}>
 
-      {/* ── Search toolbar ── */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-white shrink-0 flex-wrap">
-
-        {/* Search input */}
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search size={12} className="absolute text-gray-400 pointer-events-none" style={{ left: 9, top: "50%", transform: "translateY(-50%)" }} />
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={tl.searchPlaceholder}
-            className="w-full border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-emerald-400 text-gray-700"
-            style={{ paddingLeft: 28, paddingRight: search ? 28 : 10, paddingTop: 5, paddingBottom: 5, fontSize: 12 }}
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"><X size={12} /></button>
-          )}
-        </div>
-
-        {matchIds !== null && (
+      {/* ── Secondary controls row (Row, Zoom, Now, Legend) ── */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white shrink-0">
+        
+        {/* Left side: Search context (hidden by request, but keeping match state for robustness) */}
+        {matchIds !== null && search && (
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white"
             style={{ fontSize: 11, fontWeight: 600, backgroundColor: matchCount! > 0 ? "#0d9488" : "#ef4444" }}>
             {matchCount! > 0 ? `${matchCount} ${matchCount !== 1 ? tl.matchSuffixPlural : tl.matchSuffix}` : tl.noResults}
           </div>
         )}
 
-        <div className="h-5 w-px bg-gray-200" />
-
-        {/* Legend — status based */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {(["awaitingconfirm","reserved","seated","waitingpayment","completed","noshow","cancelled"] as const).map(s => (
-            <div key={s} className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: STATUS_META[s].dot }} />
-              <span className="text-gray-500" style={{ fontSize: 10 }}>{STATUS_META[s].label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="ml-auto flex items-center gap-1.5 text-gray-400" style={{ fontSize: 10.5 }}>
-          <div className="flex items-center gap-2 px-2 border-r border-gray-200 mr-1">
+        {/* Right controls */}
+        <div className="ml-auto flex items-center gap-2 text-gray-400" style={{ fontSize: 10.5 }}>
+          <div className="flex items-center gap-2 px-2 border-r border-gray-200">
             <span className="text-gray-400">Row</span>
             <input type="range" min={28} max={64} step={4} value={rowHeight} onChange={(e) => setRowHeight(parseInt(e.target.value))} className="w-20 accent-emerald-500 cursor-pointer" />
           </div>
-          <div className="flex items-center gap-2 px-2 border-r border-gray-200 mr-1">
+          <div className="flex items-center gap-2 px-2 border-r border-gray-200">
             <span className="text-gray-400">Zoom</span>
             <input type="range" min={1} max={5} step={0.1} value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-20 accent-emerald-500 cursor-pointer" />
           </div>
-          <button onClick={scrollToNow} className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition-colors cursor-pointer" style={{ fontWeight: 600 }}>
+          <button onClick={scrollToNow} className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition-colors cursor-pointer mr-2" style={{ fontWeight: 600 }}>
             <div className="w-2 h-2 rounded-full bg-blue-500" />
             {tl.nowLabel} · {minToTimeStr(nowMin)}
           </button>
-          <span className="text-gray-300 ml-1">·</span>
-          <span>{tl.clickHint}</span>
+          
+          {/* New View Legend button */}
+          <UnifiedLegendModal />
         </div>
       </div>
 
@@ -517,6 +616,78 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
 
         {/* Fluid sections container */}
         <div className="flex-1 flex flex-col" ref={gridRef}>
+
+          {/* ── Unassigned / Waitlist row ── */}
+          {unassignedBookings.length > 0 && (
+            <div className="flex border-b-2 border-amber-300 flex-1 w-full relative" style={{ minHeight: rowHeight + 4, backgroundColor: "#fffbeb" }}>
+              {/* Row label */}
+              <div className="sticky left-0 z-10 flex flex-col items-start justify-center border-r-2 border-amber-300 px-2 shrink-0 flex-none" style={{ width: LABEL_W, backgroundColor: "#fef3c7" }}>
+                <span className="font-bold text-amber-700" style={{ fontSize: 10, lineHeight: 1 }}>⚠ Unassigned</span>
+                <span className="text-amber-500" style={{ fontSize: 8.5 }}>Drag to assign</span>
+              </div>
+              {/* Bar area */}
+              <div className="relative flex-1 min-w-0 overflow-hidden"
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                onDrop={e => {
+                  e.preventDefault();
+                  // Dropping INTO unassigned row is a no-op (or could unassign)
+                }}
+              >
+                {/* Grid lines */}
+                {Array.from({ length: qCount }, (_, qi) => {
+                  const pct = minToPct(START_MIN + qi * 15);
+                  return <div key={qi} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${pct}%`, width: 1, backgroundColor: qi % 4 === 0 ? "#fde68a" : "#fef9c3" }} />;
+                })}
+                {currentPct > 0 && <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${currentPct}%`, width: 1.5, backgroundColor: "#3b82f6", zIndex: 4, opacity: 0.7 }} />}
+
+                {/* Unassigned booking bars */}
+                {unassignedBookings.map(b => {
+                  const sMin = Math.max(timeToMin(b.time), START_MIN);
+                  const eMin = Math.min(timeToMin(b.endTime), END_MIN);
+                  const sPct = minToPct(sMin);
+                  const wPct = Math.max((eMin - sMin) / totalMins * 100, 2);
+                  const color = STATUS_META[b.status]?.dot ?? "#f59e0b";
+                  const isDraggable = draggableIds.has(b.id);
+                  return (
+                    <div key={b.id}
+                      className={`absolute rounded overflow-hidden group/booking border-2 border-dashed border-amber-400 ${isDraggable ? "scale-105 ring-2 ring-amber-400 shadow-xl" : ""}`}
+                      draggable={isDraggable}
+                      onPointerDown={() => startDragTimer(b.id)}
+                      onPointerUp={() => cancelDragTimer(b.id)}
+                      onPointerCancel={() => cancelDragTimer(b.id)}
+                      onPointerLeave={() => cancelDragTimer(b.id)}
+                      onDragStart={e => {
+                        e.dataTransfer.setData("application/booking-move", JSON.stringify({ id: b.id, sourceSec: "__unassigned", sourceTab: 0 }));
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragEnd={() => cancelDragTimer(b.id)}
+                      onClick={e => { e.stopPropagation(); onBookingClick?.(b.id); }}
+                      style={{
+                        left: `calc(${sPct}% + 1px)`,
+                        width: `calc(${wPct}% - 2px)`,
+                        top: 4, bottom: 4,
+                        background: color,
+                        cursor: isDraggable ? "grabbing" : "grab",
+                        touchAction: "pan-x pan-y",
+                      }}
+                      title={`${b.guestName} · ${b.time}–${b.endTime} · ${b.guests} guests · UNASSIGNED`}
+                    >
+                      <div className="flex flex-col justify-center w-full h-full px-2 min-w-0 pointer-events-none">
+                        <div className="flex items-center gap-0.5 min-w-0">
+                          <span className="text-white truncate" style={{ fontSize: 9.5, fontWeight: 700, lineHeight: 1 }}>{b.guestName}</span>
+                          <span className="ml-0.5 text-white/90 shrink-0" style={{ fontSize: 9 }}>⚠️</span>
+                          <span className="ml-auto text-white/80" style={{ fontSize: 9 }}>{b.guests}</span>
+                        </div>
+                        {rowHeight >= 36 && b.phone && wPct > 7 && (
+                          <span className="text-white/65 truncate" style={{ fontSize: 8.5, lineHeight: 1, marginTop: 2 }}>{b.phone}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {SECTIONS.map(sec => {
             const isColl  = collapsed.has(sec.name);
             const secBks  = ALL_BOOKINGS.filter(b => b.section === sec.name);
@@ -582,7 +753,11 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                               const { id, sourceSec, sourceTab } = data;
                               const b = ALL_BOOKINGS.find(x => x.id === id);
                               if (b) {
-                                if (b.section === sourceSec && b.table === sourceTab) {
+                                if (sourceSec === "__unassigned") {
+                                  // Assign from waitlist to this table
+                                  b.section = sec.name as any;
+                                  b.table = tableNum;
+                                } else if (b.section === sourceSec && b.table === sourceTab) {
                                   b.section = sec.name as any;
                                   b.table = tableNum;
                                 } else if (b.additionalTables) {
@@ -653,9 +828,10 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                             ? `repeating-linear-gradient(45deg,${LATE_C},${LATE_C} 4px,${LATE_L} 4px,${LATE_L} 8px) 0 0 / ${lostPct}% 100% no-repeat, ${CYAN}`
                             : color;
 
+                          const isDraggableContext = draggableIds.has(b.id);
                           return (
-                            <div key={`${b.id}-${sec.name}-${tableNum}`} className="absolute rounded overflow-hidden group/booking"
-                              draggable={true}
+                            <div key={`${b.id}-${sec.name}-${tableNum}`} className={`absolute rounded overflow-hidden group/booking ${isDraggableContext ? "scale-105 ring-2 ring-blue-400 shadow-xl" : ""}`}
+                              draggable={isDraggableContext}
                               onDragStart={e => {
                                 if (dragState) {
                                   e.preventDefault();
@@ -664,54 +840,76 @@ export function Timeline({ period, day, onBookingClick, onSlotNewBooking, onSlot
                                 e.dataTransfer.setData("application/booking-move", JSON.stringify({ id: b.id, sourceSec: sec.name, sourceTab: tableNum }));
                                 e.dataTransfer.effectAllowed = "move";
                               }}
+                              onDragEnd={() => cancelDragTimer(b.id)}
+                              onPointerDown={() => startDragTimer(b.id)}
+                              onPointerUp={() => cancelDragTimer(b.id)}
+                              onPointerCancel={() => cancelDragTimer(b.id)}
+                              onPointerLeave={() => { setHoveredId(null); cancelDragTimer(b.id); }}
                               onPointerEnter={() => setHoveredId(b.id)}
-                              onPointerLeave={() => setHoveredId(null)}
                               style={{
                                 left: `calc(${startPct}% + 1px)`, 
                                 width: `calc(${widthPct}% - 2px)`,
                                 top: "4px", bottom: "4px",
                                 opacity: isPast ? 0.5 : searchOp,
                                 filter: undefined,
-                                zIndex: isCurrent || isHoveredLinked ? 15 : hi ? 10 : 3,
+                                zIndex: isCurrent || isHoveredLinked || isDraggableContext ? 15 : hi ? 10 : 3,
                                 background: splitBg,
                                 boxShadow: isCurrent ? `0 0 0 2px white, 0 0 0 3px ${color}` : (hi || isHoveredLinked) ? `0 0 0 2px white, 0 0 0 3px ${color}` : "none",
-                                cursor: "pointer",
-                                transition: dragState?.id === b.id ? "none" : "left 0.1s, width 0.1s, opacity 0.15s, background-color 0.15s, box-shadow 0.15s",
+                                cursor: isDraggableContext ? "grabbing" : "grab",
+                                touchAction: "pan-x pan-y", // prevent scroll block on fast swipe
+                                transition: dragState?.id === b.id ? "none" : "left 0.1s, width 0.1s, opacity 0.15s, background-color 0.15s, box-shadow 0.15s, transform 0.15s",
                               }}
                               title={`${b.guestName} · ${b.time}${seatedLate ? `→${b.actualSeatedTime}` : ""}–${b.endTime} · ${b.guests} guests${isLinkedGroup ? ` · Merged Tables` : ""}${isPast && b.status === "completed" ? ` (Completed)` : ""}${seatedLate ? ` · Late arrival (${b.actualSeatedTime})` : ""}`}
                               onClick={e => { e.stopPropagation(); onBookingClick?.(b.id); }}>
                               
                               {/* Left Resize Handle */}
                               <div
-                                className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover/booking:opacity-100 hover:bg-white/30 z-20 flex items-center justify-center transition-opacity"
-                                onPointerDown={(e) => handleHandlePointerDown(e, b.id, "time", timeToMin(b.time))}
+                                className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover/booking:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-white/30 z-20 flex items-center justify-center transition-opacity"
+                                onPointerDown={(e) => { e.stopPropagation(); cancelDragTimer(b.id); handleHandlePointerDown(e, b.id, "time", timeToMin(b.time)); }}
                                 onPointerMove={handleHandlePointerMove}
                                 onPointerUp={handleHandlePointerUp}
                               >
-                                <div className="w-[2px] h-3 bg-white/70 rounded-full" />
+                                <div className="w-[3px] h-4 bg-white/90 rounded-full shadow-sm" />
                               </div>
 
-                              <div className="flex items-center justify-center w-full h-full px-2.5 gap-0.5 min-w-0 pointer-events-none">
-                                <span className="text-white truncate" style={{ fontSize: period === "All" ? 9.5 : 11, fontWeight: 500, lineHeight: 1, textDecorationLine: isPast && b.status === "completed" ? "line-through" : "none", textDecorationColor: "rgba(255,255,255,0.5)" }}>{b.guestName}</span>
-                                {isLinkedGroup && (
-                                  <div className="ml-1 px-1 rounded bg-white/30 text-white shrink-0" style={{ fontSize: 8.5, fontWeight: 700, paddingBottom: 1 }}>Linked</div>
-                                )}
-                                <div className="flex items-center gap-0.5 shrink-0 ml-auto mr-1">
-                                  {b.hasNote && <MessageSquare size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
-                                  {b.hasFile && <FileText size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
-                                  <span className="text-white/80 ml-0.5" style={{ fontSize: period === "All" ? 8.5 : 10 }}>{b.guests}</span>
+                              {/* Content */}
+                              <div className="flex flex-col justify-center w-full h-full px-2.5 min-w-0 pointer-events-none">
+                                {/* Row 1: guest name + linked icon + meta icons */}
+                                <div className="flex items-center gap-0.5 min-w-0">
+                                  <span className="text-white truncate" style={{ fontSize: period === "All" ? 9.5 : 11, fontWeight: 600, lineHeight: 1, textDecorationLine: isPast && b.status === "completed" ? "line-through" : "none", textDecorationColor: "rgba(255,255,255,0.5)" }}>{b.guestName}</span>
+                                  {isLinkedGroup && (
+                                    <span className="ml-0.5 text-white/90 shrink-0" style={{ fontSize: period === "All" ? 9 : 10 }}>🔗</span>
+                                  )}
+                                  <div className="flex items-center gap-0.5 shrink-0 ml-auto">
+                                    {b.hasNote && <MessageSquare size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
+                                    {b.hasFile && <FileText size={period === "All" ? 7 : 9} color="rgba(255,255,255,0.85)" />}
+                                    <span className="text-white/80 ml-0.5" style={{ fontSize: period === "All" ? 8.5 : 10 }}>{b.guests}</span>
+                                  </div>
                                 </div>
+                                {/* Row 2: phone (masked) + type tag — only shown if bar height >= 36px */}
+                                {rowHeight >= 36 && (
+                                  <div className="flex items-center gap-1 min-w-0 mt-0.5">
+                                    {b.phone && widthPct > 7 && (
+                                      <span className="text-white/65 truncate" style={{ fontSize: 8.5, lineHeight: 1 }}>{b.phone}</span>
+                                    )}
+                                    {bookingTypeLabel(b, widthPct > 10) && (
+                                      <span className="ml-auto shrink-0 px-1 rounded bg-white/20 text-white" style={{ fontSize: 8, fontWeight: 700, lineHeight: 1.3 }}>
+                                        {bookingTypeLabel(b, widthPct > 10)}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                               
                               {/* Right Resize Handle */}
                               <div
-                                className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover/booking:opacity-100 hover:bg-white/30 z-20 flex items-center justify-center transition-opacity"
-                                onPointerDown={(e) => handleHandlePointerDown(e, b.id, "endTime", timeToMin(b.endTime))}
+                                className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover/booking:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-white/30 z-20 flex items-center justify-center transition-opacity"
+                                onPointerDown={(e) => { e.stopPropagation(); cancelDragTimer(b.id); handleHandlePointerDown(e, b.id, "endTime", timeToMin(b.endTime)); }}
                                 onPointerMove={handleHandlePointerMove}
                                 onPointerUp={handleHandlePointerUp}
                                 onPointerLeave={handleHandlePointerUp}
                               >
-                                <div className="w-[2px] h-3 bg-white/70 rounded-full" />
+                                <div className="w-[3px] h-4 bg-white/90 rounded-full shadow-sm" />
                               </div>
                             </div>
                           );

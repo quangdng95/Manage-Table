@@ -1,17 +1,21 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  User, Settings, CreditCard, HelpCircle, LogOut, Sun, Moon, X,
+  User, Settings, CreditCard, HelpCircle, LogOut, Sun, Moon, X, Globe,
 } from "lucide-react";
+import { useLang } from "../context/LanguageContext";
 
 interface UserMenuDropdownProps {
   onClose: () => void;
   onProfile: () => void;
   onSettings: () => void;
+  position?: "top" | "bottom";
 }
 
-export function UserMenuDropdown({ onClose, onProfile, onSettings }: UserMenuDropdownProps) {
+export function UserMenuDropdown({ onClose, onProfile, onSettings, position = "bottom" }: UserMenuDropdownProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [colorScheme, setColorScheme] = useState<"light" | "dark">("light");
+  const { lang, setLang } = useLang();
+  const isEN = lang === "en";
 
   // Close on outside click
   useEffect(() => {
@@ -44,7 +48,7 @@ export function UserMenuDropdown({ onClose, onProfile, onSettings }: UserMenuDro
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-full mt-1.5 z-[200] bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
+      className={`absolute right-0 z-[200] bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden ${position === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
       style={{
         width: 272,
         animation: "menuFadeIn 0.15s cubic-bezier(0.34,1.4,0.64,1)",
@@ -103,6 +107,35 @@ export function UserMenuDropdown({ onClose, onProfile, onSettings }: UserMenuDro
 
       {/* Divider */}
       <div className="mx-3 border-t border-gray-100" />
+
+      {/* Language toggle */}
+      <div className="flex items-center justify-between px-4 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#f1f5f9" }}>
+            <Globe size={15} style={{ color: "#64748b" }} />
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "#1e293b" }}>Language</div>
+        </div>
+        <button
+          onClick={() => setLang(isEN ? "vi" : "en")}
+          className="relative flex items-center rounded-full border border-gray-200 overflow-hidden transition-all hover:border-emerald-300"
+          style={{ width: 68, height: 24, backgroundColor: "#f8fafc", padding: 2, flexShrink: 0 }}
+          aria-label="Toggle language"
+        >
+          <div
+            className="absolute rounded-full transition-all duration-200"
+            style={{
+              width: 30, height: 18,
+              backgroundColor: "#10b981",
+              left: isEN ? 2 : 34,
+              top: 2,
+              boxShadow: "0 1px 3px rgba(16,185,129,0.35)",
+            }}
+          />
+          <span className="relative z-10 transition-colors duration-200" style={{ width: 32, textAlign: "center", fontSize: 10, fontWeight: 700, color: isEN ? "white" : "#9ca3af", letterSpacing: "0.03em" }}>EN</span>
+          <span className="relative z-10 transition-colors duration-200" style={{ width: 32, textAlign: "center", fontSize: 10, fontWeight: 700, color: !isEN ? "white" : "#9ca3af", letterSpacing: "0.03em" }}>VI</span>
+        </button>
+      </div>
 
       {/* Footer — account info + color scheme */}
       <div className="px-4 py-3 flex items-center justify-between gap-3">

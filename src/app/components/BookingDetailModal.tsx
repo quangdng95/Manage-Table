@@ -537,6 +537,7 @@ function UnifiedOverviewTab({ booking, enriched, selectedDay, onClose, onOpenCRM
                 onBlur={() => {
                   if (guests === "" || parseInt(guests) < 1) setGuests("1");
                 }}
+                inputMode="numeric" pattern="[0-9]*"
                 className={`w-12 min-w-0 flex-1 border border-gray-200 rounded-lg px-2 py-2 text-center text-gray-800 focus:outline-none focus:border-emerald-400`} 
                 style={{ fontSize: 13, fontWeight: 600 }} />
               <button onClick={() => setGuests(g => String((parseInt(g) || 1) + 1))}
@@ -704,9 +705,8 @@ export function BookingDetailModal({ bookingId, initialTab = "overview", selecte
 
       {/* Drawer Panel */}
       <div
-        className="fixed top-0 right-0 bottom-0 z-50 bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden"
+        className="fixed top-0 right-0 bottom-0 z-50 bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden w-full sm:w-[540px] lg:max-w-[40vw]"
         style={{ 
-          width: 540, maxWidth: "100vw",
           transform: isOpen ? "translateX(0)" : "translateX(100%)",
           pointerEvents: isOpen ? "auto" : "none" 
         }}
