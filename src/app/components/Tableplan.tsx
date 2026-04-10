@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import { Users, Plus, Clock, X, MousePointer2 } from "lucide-react";
+import { Users, Plus, Clock, X, MousePointer2, Settings, Link2, ChevronRight } from "lucide-react";
 import {
   ALL_BOOKINGS, STATUS_META, getBookingsForDay,
   type Booking, type Section, type Status,
@@ -129,18 +129,9 @@ const LOCAL_TABLES: Record<Section, Omit<TableDef,"section">[]> = {
     { id:"te9", number:9,  capacity:4, shape:"rect",    x:240, y:360, w:140, h:64,  top:2, bottom:2 },
     { id:"te10",number:10, capacity:6, shape:"rect",    x:425, y:345, w:180, h:84,  top:3, bottom:3 },
   ],
-  Bar: [
-    { id:"b1",  number:1,  capacity:2, shape:"circle",  x:75,  y:80,  w:76,  h:76  },
-    { id:"b2",  number:2,  capacity:2, shape:"circle",  x:210, y:80,  w:76,  h:76  },
-    { id:"b3",  number:3,  capacity:2, shape:"circle",  x:345, y:80,  w:76,  h:76  },
-    { id:"b4",  number:4,  capacity:2, shape:"circle",  x:480, y:80,  w:76,  h:76  },
-    { id:"b5",  number:5,  capacity:4, shape:"rect",    x:75,  y:225, w:130, h:66,  top:2, bottom:2 },
-    { id:"b6",  number:6,  capacity:4, shape:"rect",    x:250, y:225, w:130, h:66,  top:2, bottom:2 },
-    { id:"b7",  number:7,  capacity:6, shape:"rect",    x:425, y:208, w:170, h:82,  top:3, bottom:3 },
-    { id:"b8",  number:8,  capacity:4, shape:"octagon", x:130, y:362, w:95,  h:95  },
-    { id:"b9",  number:9,  capacity:4, shape:"octagon", x:285, y:362, w:95,  h:95  },
-    { id:"b10", number:10, capacity:4, shape:"rect",    x:445, y:368, w:130, h:68,  top:2, bottom:2 },
-  ],
+  // Bar: cleared to demo the empty-area placeholder (Feature 1).
+  // Restore by re-adding table definitions here, or via the Table Config tool.
+  Bar: [],
 };
 
 // Build flat canvas-coord table list (section → apply zone offset)
@@ -166,11 +157,14 @@ function getActiveBooking(def: TableDef, day: number, atMin: number): Booking|un
 
 // ── FloorTable ────────────────────────────────────────────────────
 function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
-  onClickEmpty, onClickBooking, onDragStart, onDrop, onDragOver,
+  onClickEmpty, onClickBooking, onDragStart, onDrop, onDropAssign, onDragOver,
 }: {
   def: TableDef; booking?: Booking; nowMin: number; dragTarget: boolean; selected?: boolean;
   onClickEmpty: (d: TableDef, e: React.MouseEvent) => void; onClickBooking: (id: number) => void;
-  onDragStart: (bId:number,dId:string)=>void; onDrop:(dId:string)=>void; onDragOver:(e:React.DragEvent)=>void;
+  onDragStart: (bId:number,dId:string)=>void;
+  onDrop:(dId:string)=>void;
+  onDropAssign:(bookingId:number,dId:string)=>void;
+  onDragOver:(e:React.DragEvent)=>void;
 }) {
   const [isDraggable, setIsDraggable] = useState(false);
   const dragTimer = useRef<number | null>(null);
@@ -211,7 +205,15 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
 
   return (
     <div style={{ position:"absolute", left:def.x, top:def.y, width:def.w, height:def.h, transition:"opacity 0.2s" }}
-      onDragOver={onDragOver} onDrop={e => { e.preventDefault(); onDrop(def.id); }}>
+      onDragOver={e => { e.preventDefault(); onDragOver(e); }}
+      onDrop={e => {
+        e.preventDefault();
+        // Priority 1: pool sidebar assign
+        const assignPayload = e.dataTransfer.getData("application/booking-assign");
+        if (assignPayload) { onDropAssign(Number(assignPayload), def.id); return; }
+        // Priority 2: internal table-to-table move
+        onDrop(def.id);
+      }}>
 
       {/* Chairs for Rectangles */}
       {def.shape === "rect" && (
@@ -301,27 +303,79 @@ function FloorTable({ def, booking, nowMin, dragTarget, selected = false,
 }
 
 // ── Linked-group bounding box ─────────────────────────────────────
-function LinkedBox({ defs, onUnlink }: { defs: TableDef[], onUnlink: () => void }) {
+/** Renders a dashed bounding box around a merged table group.
+ *  - When `booking` is supplied (dynamic booking group), the border uses the booking's status color.
+ *  - When absent (static linked-group from layout config), falls back to indigo. */
+function LinkedBox({ defs, booking, onUnlink }: {
+  defs: TableDef[];
+  booking?: Booking;
+  onUnlink: () => void;
+}) {
   if (defs.length < 2) return null;
-  const p=28, x1=Math.min(...defs.map(d=>d.x))-p, y1=Math.min(...defs.map(d=>d.y))-p;
-  const x2=Math.max(...defs.map(d=>d.x+d.w))+p, y2=Math.max(...defs.map(d=>d.y+d.h))+p;
+  const PAD = 28;
+  const x1 = Math.min(...defs.map(d => d.x)) - PAD;
+  const y1 = Math.min(...defs.map(d => d.y)) - PAD;
+  const x2 = Math.max(...defs.map(d => d.x + d.w)) + PAD;
+  const y2 = Math.max(...defs.map(d => d.y + d.h)) + PAD;
+  const W  = x2 - x1;
+  const H  = y2 - y1;
+
+  // Color: booking status color if driven by a live booking, otherwise indigo
+  const borderColor = booking ? (STATUS_META[booking.status]?.dot ?? "#818cf8") : "#818cf8";
+  const labelBg     = booking ? (STATUS_META[booking.status]?.dot ?? "#6366f1") : "#6366f1";
+  const labelBgLight = booking ? (STATUS_META[booking.status]?.bg  ?? "#eef2ff") : "#eef2ff";
+
   return (
-    <div style={{ position:"absolute",left:x1,top:y1,width:x2-x1,height:y2-y1,
-      border:"2.5px dashed #818cf8",borderRadius:20,pointerEvents:"none",zIndex:20 }}>
-      
-      {/* Label and button wrapper with pointer-events auto */}
-      <div style={{ position:"absolute",top:-14,left:12,pointerEvents:"auto" }} className="flex items-center gap-2">
-        <div style={{ backgroundColor:"#6366f1",color:"white",fontSize:9.5,fontWeight:700,padding:"2px 8px",borderRadius:20 }}>
-          Merged Group
+    <div style={{
+      position: "absolute", left: x1, top: y1, width: W, height: H,
+      border: `2.5px dashed ${borderColor}`,
+      borderRadius: 20,
+      pointerEvents: "none",
+      zIndex: 20,
+      backgroundColor: borderColor + "06",
+    }}>
+      {/* Top-left label + unlink button */}
+      <div style={{ position: "absolute", top: -14, left: 12, pointerEvents: "auto" }} className="flex items-center gap-1.5">
+        <div style={{ backgroundColor: labelBg, color: "white", fontSize: 9.5, fontWeight: 700, padding: "2px 8px", borderRadius: 20, display: "flex", alignItems: "center", gap: 4 }}>
+          <Link2 size={9} />
+          {booking ? "Merged" : "Merged Group"}
         </div>
         <button
           onClick={onUnlink}
-          className="bg-white text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm rounded-full w-10 h-10 flex items-center justify-center border border-gray-100"
+          className="bg-white text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm rounded-full w-5 h-5 flex items-center justify-center border border-gray-100"
           title="Detach tables"
+          style={{ pointerEvents: "auto" }}
         >
-          <X size={12} strokeWidth={3} />
+          <X size={10} strokeWidth={3} />
         </button>
       </div>
+
+      {/* Center badge — guest name + pax count, only for booking-driven groups */}
+      {booking && (
+        <div style={{
+          position: "absolute",
+          left: "50%", top: "50%",
+          transform: "translate(-50%, -50%)",
+          backgroundColor: labelBg,
+          color: "white",
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "3px 10px",
+          borderRadius: 20,
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          whiteSpace: "nowrap",
+          boxShadow: `0 2px 8px ${borderColor}40`,
+          pointerEvents: "none",
+          zIndex: 21,
+        }}>
+          <Users size={9} />
+          <span>{booking.guestName.split(" ")[0]}</span>
+          <span style={{ opacity: 0.75 }}>·</span>
+          <span>{booking.guests} pax</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -360,9 +414,11 @@ interface TableplanProps {
   onBookingClick?: (id: number) => void;
   onWalkinRequest?: (tables: { section: Section, table: number }[], time: string) => void;
   forceRender?: number;
+  hideCancelledNoshow?: boolean;
+  onOpenTableConfig?: () => void;
 }
 
-export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }: TableplanProps) {
+export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender, hideCancelledNoshow = false, onOpenTableConfig }: TableplanProps) {
   const nowDate = new Date();
   const nowMinsActual = nowDate.getHours() * 60 + nowDate.getMinutes();
 
@@ -371,15 +427,25 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
   const [dragFromId, setDragFromId] = useState<string|null>(null);
   const [dragOverId, setDragOverId] = useState<string|null>(null);
   const [unlinkedGroups, setUnlinkedGroups] = useState<Set<string>>(new Set());
-  const [, setTick] = useState(0);
-
-  // ── Re-render when parent signals a new booking was created ──
-  useEffect(() => { setTick(v => v + 1); }, [forceRender]);
 
   const [selectedEmptyTables, setSelectedEmptyTables] = useState<TableDef[]>([]);
   const [isMultiSelecting, setIsMultiSelecting] = useState(false);
+  const [poolOpen, setPoolOpen] = useState(false);
+  const [tick, setTick] = useState(0);
+  useEffect(() => { setTick(v => v + 1); }, [forceRender]);
 
-  // ── Pan & zoom state ──
+  // Unassigned bookings for the Pool Sidebar
+  const CANCELLED_NOSHOW_SET = useMemo(() => new Set(["cancelled", "noshow"]), []);
+  const unassignedBookings = useMemo(() => {
+    return getBookingsForDay(day).filter(b => {
+      if (b.table !== 0) return false;
+      if (hideCancelledNoshow && CANCELLED_NOSHOW_SET.has(b.status)) return false;
+      return true;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day, hideCancelledNoshow, CANCELLED_NOSHOW_SET, tick]);
+
+
   const [scale, setScale]   = useState(1);
   const [pan,   setPan]     = useState({ x: 40, y: 40 });
   const isPanning           = useRef(false);
@@ -427,13 +493,18 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
 
   const tableBookings = useMemo(() => {
     const map: Record<string,Booking> = {};
+    const CANCELLED_NOSHOW = new Set(["cancelled", "noshow"]);
     for (const def of visibleDefs) {
       const b = getActiveBooking(def, day, atMin);
-      if (b) map[def.id] = b;
+      if (b) {
+        // Feature 4: if hide toggle is ON, treat cancelled/noshow as vacant
+        if (hideCancelledNoshow && CANCELLED_NOSHOW.has(b.status)) continue;
+        map[def.id] = b;
+      }
     }
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleDefs, day, atMin]);
+  }, [visibleDefs, day, atMin, hideCancelledNoshow]);
 
   const visibleGroups = useMemo(() => {
     const g: Record<string,TableDef[]> = {};
@@ -482,6 +553,7 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
   }, [visibleDefs, unlinkedGroups, tableBookings]);
 
   function handleDrop(toId: string) {
+    // Case A: internal table-to-table move
     const fromB = dragFromId ? tableBookings[dragFromId] : null;
     if (!fromB || !dragFromId || dragFromId===toId) { setDragFromId(null); setDragOverId(null); return; }
     if (tableBookings[toId]) { setDragFromId(null); setDragOverId(null); return; }
@@ -490,6 +562,16 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
     const b = ALL_BOOKINGS.find(x=>x.id===fromB.id);
     if (b) { b.table = toDef.number; b.section = toDef.section; }
     setDragFromId(null); setDragOverId(null); setTick(v=>v+1);
+  }
+
+  // Assigns an unassigned booking (from Pool Sidebar drag) to a specific floor table
+  function handlePoolAssign(bookingId: number, toDefId: string) {
+    const toDef = ALL_DEFS.find(d => d.id === toDefId);
+    if (!toDef) return;
+    if (tableBookings[toDefId]) return; // occupied — block drop
+    const b = ALL_BOOKINGS.find(x => x.id === bookingId);
+    if (b) { b.section = toDef.section; b.table = toDef.number; }
+    setTick(v => v + 1);
   }
 
   const occupied  = visibleDefs.filter(d=>tableBookings[d.id]).length;
@@ -601,6 +683,34 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
           <span style={{ fontSize:11,color:"#9ca3af" }}>·</span>
           <span style={{ fontSize:11,fontWeight:600,color:"#6b7280" }}>{available} available</span>
         </div>
+
+        <div className="w-px h-5 bg-gray-200 shrink-0" />
+
+        {/* Unassigned Pool toggle */}
+        <button
+          id="table-view-pool-toggle"
+          onClick={() => setPoolOpen(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+            poolOpen
+              ? "bg-amber-50 border-amber-400 text-amber-700 shadow-sm"
+              : unassignedBookings.length > 0
+                ? "bg-white border-amber-300 text-amber-600 hover:bg-amber-50"
+                : "bg-white border-gray-200 text-gray-400"
+          }`}
+          style={{ fontSize: 11.5, fontWeight: 600 }}
+        >
+          <span>⚠</span>
+          <span>Pool</span>
+          {unassignedBookings.length > 0 && (
+            <span
+              className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center"
+              style={{ fontSize: 9, fontWeight: 800 }}
+            >
+              {unassignedBookings.length}
+            </span>
+          )}
+          <ChevronRight size={12} className={`transition-transform ${poolOpen ? "rotate-180" : ""}`} />
+        </button>
       </div>
 
       {/* ── Status legend ── */}
@@ -702,8 +812,12 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
                 {/* Linked group overlays for this section */}
                 {secGroups.map((grp, i) => {
                   const groupId = grp[0].linkedGroup!;
+                  // For booking-driven groups, pass the booking so LinkedBox can use its status color
+                  const bookingForGroup = groupId.startsWith('booking-')
+                    ? ALL_BOOKINGS.find(x => x.id === Number(groupId.replace('booking-', '')))
+                    : undefined;
                   return (
-                    <LinkedBox key={i} defs={grp} onUnlink={() => {
+                    <LinkedBox key={i} defs={grp} booking={bookingForGroup} onUnlink={() => {
                       if (groupId.startsWith('booking-')) {
                         const bId = Number(groupId.replace('booking-', ''));
                         const b = ALL_BOOKINGS.find(x => x.id === bId);
@@ -715,8 +829,44 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
                   );
                 })}
 
-                {/* Tables for this section */}
-                {secDefs.map(def => (
+                {/* Tables for this section — or empty-state placeholder */}
+                {secDefs.length === 0 ? (
+                  // Feature 1: Empty area placeholder
+                  <div style={{
+                    position: "absolute",
+                    top: 48, left: 24, right: 24, bottom: 24,
+                    border: `2.5px dashed ${z.labelColor}55`,
+                    borderRadius: 16,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 12,
+                    backgroundColor: z.labelColor + "08",
+                  }}>
+                    <div style={{ fontSize: 36, opacity: 0.25 }}>🤷</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: z.labelColor, opacity: 0.7, textAlign: "center" }}>
+                      No tables configured for this area
+                    </div>
+                    <button
+                      id={`add-first-table-${sec}`}
+                      onClick={() => onOpenTableConfig?.()}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 transition-all hover:scale-105 active:scale-95"
+                      style={{
+                        borderColor: z.labelColor,
+                        backgroundColor: z.labelColor + "18",
+                        color: z.labelColor,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        boxShadow: `0 2px 12px ${z.labelColor}25`,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Settings size={14} />
+                      + Add first table to this area
+                    </button>
+                  </div>
+                ) : secDefs.map(def => (
                   <div key={def.id} data-table="1">
                     <FloorTable def={def}
                       booking={tableBookings[def.id]}
@@ -725,6 +875,7 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
                       selected={selectedEmptyTables.some(t => t.id === def.id)}
                       onDragStart={(_b,dId)=>setDragFromId(dId)}
                       onDrop={handleDrop}
+                      onDropAssign={handlePoolAssign}
                       onDragOver={e=>{ e.preventDefault(); setDragOverId(def.id); }}
                       onClickEmpty={(d, e) => {
                         e.stopPropagation();
@@ -752,6 +903,78 @@ export function Tableplan({ day, onBookingClick, onWalkinRequest, forceRender }:
           })}
         </div>
       </div>
+
+      {/* ── Unassigned Pool Sidebar (right side) ── */}
+      {poolOpen && (
+        <div
+          className="absolute right-0 top-0 bottom-0 z-40 flex flex-col bg-white border-l-2 border-amber-300 shadow-2xl"
+          style={{ width: 248, animation: "poolSidebarIn 0.22s cubic-bezier(0.34,1.15,0.64,1)" }}
+        >
+          <style>{`@keyframes poolSidebarIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }`}</style>
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-amber-200 shrink-0" style={{ backgroundColor: "#fef3c7" }}>
+            <div>
+              <div className="font-bold text-amber-800" style={{ fontSize: 11 }}>⚠ Waiting Pool</div>
+              <div className="text-amber-600" style={{ fontSize: 9.5 }}>Drag a card → drop onto available table</div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center" style={{ fontSize: 9, fontWeight: 800 }}>
+                {unassignedBookings.length}
+              </span>
+              <button onClick={() => setPoolOpen(false)} className="text-amber-500 hover:text-amber-800 transition-colors">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Card list */}
+          <div className="overflow-y-auto flex-1 p-2 space-y-2" style={{ backgroundColor: "#fffbeb" }}>
+            {unassignedBookings.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-32 text-amber-400 gap-2">
+                <span style={{ fontSize: 28, opacity: 0.4 }}>✓</span>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>All bookings assigned!</span>
+              </div>
+            ) : (
+              unassignedBookings.map(b => {
+                const color = STATUS_META[b.status]?.dot ?? "#f59e0b";
+                const meta  = STATUS_META[b.status];
+                return (
+                  <div
+                    key={b.id}
+                    draggable
+                    onDragStart={e => {
+                      e.dataTransfer.setData("application/booking-assign", String(b.id));
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onClick={() => onBookingClick?.(b.id)}
+                    className="rounded-xl border-2 border-dashed p-2.5 cursor-grab select-none transition-all hover:shadow-md hover:border-amber-400 active:scale-[0.97]"
+                    style={{ borderColor: color + "80", backgroundColor: meta?.bg ?? "#fff" }}
+                    title={`${b.guestName} · ${b.time}–${b.endTime} · Drag to assign`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                        <span className="font-bold truncate" style={{ fontSize: 10.5, color: meta?.color ?? "#92400e" }}>{b.guestName}</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded-full text-white shrink-0" style={{ fontSize: 8, fontWeight: 700, backgroundColor: color }}>{meta?.shortLabel}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5" style={{ fontSize: 9.5, color: "#92400e", opacity: 0.8 }}>
+                      <Clock size={9} />
+                      <span>{b.time}–{b.endTime}</span>
+                      <Users size={9} />
+                      <span>{b.guests} pax</span>
+                    </div>
+                    {b.phone && (
+                      <div className="mt-1 truncate" style={{ fontSize: 9, color: "#b45309" }}>{b.phone}</div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Floating Action Bar for Multi-select */}
       {selectedEmptyTables.length > 0 && (

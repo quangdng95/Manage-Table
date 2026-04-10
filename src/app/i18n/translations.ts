@@ -23,9 +23,9 @@ const T = {
     views: {
       show:      "Show:",
       time:      "Time:",
-      diagram:   "Diagram",
+      diagram:   "Gantt",
       list:      "List",
-      tablePlan: "Table plan",
+      tablePlan: "Table View",
     },
 
     // ── Time periods ─────────────────────────────────────────
@@ -240,9 +240,9 @@ const T = {
     views: {
       show:      "Hiển thị:",
       time:      "Thời gian:",
-      diagram:   "Lịch biểu",
+      diagram:   "Gantt",
       list:      "Danh sách",
-      tablePlan: "Sơ đồ bàn",
+      tablePlan: "Table View",
     },
 
     periods: {

@@ -155,9 +155,17 @@ export const ALL_BOOKINGS: Booking[] = [
   { id: 315, time: "20:00", endTime: "21:30", section: "Restaurant", table: 6, guestName: "Emma Davis", guests: 2, status: "awaitingconfirm", tags: ["Birthday 🎂"], hasNote: false, hasFile: false, period: "evening", phone: "+84 97 *** 8812", bookingType: "banquet", banquetSubtype: "Birthday" },
 
   // ── UNASSIGNED (Waitlist) — table: 0 ───────────────────────
-  { id: 401, time: "18:00", endTime: "19:30", section: "Restaurant", table: 0, guestName: "Pending — Nguyen Family", guests: 6, status: "reserved", tags: ["VIP ⭐"], hasNote: true, hasFile: false, period: "evening", phone: "+84 90 *** 4321", bookingType: "dine-in" },
-  { id: 402, time: "19:00", endTime: "20:30", section: "Restaurant", table: 0, guestName: "Pending — Chen Group", guests: 10, status: "awaitingconfirm", tags: ["Birthday 🎂", "Anniversary ❤️"], hasNote: false, hasFile: false, period: "evening", phone: "+84 91 *** 7788", bookingType: "banquet", banquetSubtype: "Birthday" },
-  { id: 403, time: "20:00", endTime: "21:00", section: "Restaurant", table: 0, guestName: "Pending — Smith Co.", guests: 8, status: "reserved", tags: ["Corporate", "Business"], hasNote: true, hasFile: true, period: "evening", phone: "+84 93 *** 5566", bookingType: "banquet", banquetSubtype: "Company" },
+  { id: 401, time: "18:00", endTime: "19:30", section: "Restaurant", table: 0, guestName: "Pending — Nguyen Family",  guests: 6,  status: "reserved",      tags: ["VIP ⭐"],                     hasNote: true,  hasFile: false, period: "evening", phone: "+84 90 *** 4321", bookingType: "dine-in" },
+  { id: 402, time: "19:00", endTime: "20:30", section: "Restaurant", table: 0, guestName: "Pending — Chen Group",    guests: 10, status: "awaitingconfirm", tags: ["Birthday 🎂", "Anniversary ❤️"], hasNote: false, hasFile: false, period: "evening", phone: "+84 91 *** 7788", bookingType: "banquet", banquetSubtype: "Birthday" },
+  { id: 403, time: "20:00", endTime: "21:00", section: "Restaurant", table: 0, guestName: "Pending — Smith Co.",     guests: 8,  status: "reserved",      tags: ["Corporate", "Business"],     hasNote: true,  hasFile: true,  period: "evening", phone: "+84 93 *** 5566", bookingType: "banquet", banquetSubtype: "Company" },
+  { id: 404, time: "17:30", endTime: "19:00", section: "Terrace",    table: 0, guestName: "Pending — Pham Wedding",  guests: 12, status: "reserved",      tags: ["Wedding 💍"],                 hasNote: true,  hasFile: true,  period: "evening", phone: "+84 97 *** 1234", bookingType: "banquet", banquetSubtype: "Wedding" },
+  { id: 405, time: "18:30", endTime: "20:00", section: "Bar",         table: 0, guestName: "Pending — Le Birthday",  guests: 5,  status: "awaitingconfirm", tags: ["Birthday 🎂"],               hasNote: true,  hasFile: false, period: "evening", phone: "+84 98 *** 9090", bookingType: "banquet", banquetSubtype: "1st Birthday" },
+  { id: 406, time: "19:30", endTime: "21:00", section: "Restaurant", table: 0, guestName: "Pending — Tran Co.",     guests: 9,  status: "awaitingconfirm", tags: ["Corporate"],                  hasNote: false, hasFile: false, period: "evening", phone: "+84 99 *** 8877", bookingType: "banquet", banquetSubtype: "Company" },
+  { id: 407, time: "20:30", endTime: "22:00", section: "First floor", table: 0, guestName: "Pending — Hmm Group",   guests: 7,  status: "reserved",      tags: ["VIP ⭐"],                     hasNote: false, hasFile: true,  period: "evening", phone: "+84 91 *** 3344", bookingType: "dine-in" },
+  // ── UNASSIGNED MORNING (cluster demo — overlapping 10:00–11:30) ─────────
+  { id: 411, time: "10:00", endTime: "11:30", section: "Restaurant", table: 0, guestName: "Pending — Kim Group",    guests: 4, status: "reserved",      tags: ["VIP ⭐"],       hasNote: false, hasFile: false, period: "morning", phone: "+84 90 *** 1111", bookingType: "dine-in" },
+  { id: 412, time: "10:15", endTime: "11:45", section: "Restaurant", table: 0, guestName: "Pending — Park Family",  guests: 6, status: "awaitingconfirm", tags: ["Birthday 🎂"], hasNote: true,  hasFile: false, period: "morning", phone: "+84 91 *** 2222", bookingType: "banquet", banquetSubtype: "Birthday" },
+  { id: 413, time: "10:30", endTime: "12:00", section: "Restaurant", table: 0, guestName: "Pending — Lee Co.",      guests: 8, status: "reserved",      tags: ["Corporate"],   hasNote: false, hasFile: true,  period: "morning", phone: "+84 92 *** 3333", bookingType: "banquet", banquetSubtype: "Company" },
 ];
 
 export const STATUS_META: Record<Status, { label: string; shortLabel: string; color: string; bg: string; dot: string }> = {
@@ -236,6 +244,13 @@ export function getPeriodForTime(time: string): Period {
 /** Pushes a new booking into the shared ALL_BOOKINGS array (global mutation). */
 export function addBooking(newBooking: Booking): void {
   ALL_BOOKINGS.push(newBooking);
+}
+
+/** Merges a partial Booking payload into an existing booking (global mutation). */
+export function updateBooking(id: number, patch: Partial<Booking>): void {
+  const idx = ALL_BOOKINGS.findIndex(b => b.id === id);
+  if (idx === -1) return;
+  Object.assign(ALL_BOOKINGS[idx], patch);
 }
 
 /** Determines the visual hierarchy state of a booking on the timeline based on its status and time. */

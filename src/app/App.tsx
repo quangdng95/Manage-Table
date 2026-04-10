@@ -17,6 +17,7 @@ import { CRMView } from "./components/CRMView";
 import { BookingSettingsDrawer } from "./components/BookingSettingsDrawer";
 import { BookingDetailModal } from "./components/BookingDetailModal";
 import { BookingDrawer } from "./components/BookingDrawer";
+import { OrderDetailsPanel } from "./components/OrderDetailsPanel";
 import { updateBookingStatus, type Status } from "./data/bookings";
 import { UserMenuDropdown } from "./components/UserMenuDropdown";
 import LogoPlaceholder from "../imports/LogoPlaceholder";
@@ -382,7 +383,7 @@ function ViewControls({ activeView, setActiveView, activeTime, setActiveTime }: 
   const { t } = useLang();
 
   const VIEW_BUTTONS = [
-    { id: "Diagram",   icon: BarChart2,  label: t.views.diagram   },
+    { id: "Gantt",     icon: BarChart2,  label: t.views.diagram   },
     { id: "List",      icon: List,       label: t.views.list      },
     { id: "Tableplan", icon: LayoutGrid, label: t.views.tablePlan },
   ];
@@ -437,16 +438,18 @@ function ViewControls({ activeView, setActiveView, activeTime, setActiveTime }: 
 function AppInner() {
   const { t } = useLang();
   const [activeTab,         setActiveTab]         = useState<NavTab>("Bookings");
-  const [activeView,        setActiveView]        = useState("Diagram");
+  const [activeView,        setActiveView]        = useState("Gantt");
   const [activeTime,        setActiveTime]        = useState("All");
   const [drawerOpen,        setDrawerOpen]        = useState(false);
   const [selectedBooking,   setSelectedBooking]   = useState<{ id: number; tab?: string } | null>(null);
+  const [orderPanelId,      setOrderPanelId]      = useState<number | null>(null);
   const [bookingDrawerOpen, setBookingDrawerOpen] = useState(false);
   const [bookingDrawerType, setBookingDrawerType] = useState<"walk-in" | "reservation">("reservation");
   const [bookingDrawerSlot, setBookingDrawerSlot] = useState<SlotInfo | undefined>(undefined);
   const [selectedDay,       setSelectedDay]       = useState(new Date().getDate());
-  const [settingsView,      setSettingsView]      = useState<SettingsView | null>(null);
-  const [forceRender,       setForceRender]       = useState(0);
+  const [settingsView,         setSettingsView]         = useState<SettingsView | null>(null);
+  const [forceRender,          setForceRender]          = useState(0);
+  const [hideCancelledNoshow,  setHideCancelledNoshow]  = useState(false);
 
   function handleNewBooking() {
     setBookingDrawerType("reservation");
@@ -458,7 +461,7 @@ function AppInner() {
     setBookingDrawerSlot(undefined);
     setBookingDrawerOpen(true);
   }
-  function handleBookingClick(id: number)             { setSelectedBooking({ id, tab: "overview" }); }
+  function handleBookingClick(id: number)             { setOrderPanelId(id); }
   function handleIconClick(id: number, tab: string)   { setSelectedBooking({ id, tab }); }
   function handleSlotNewBooking(slot: SlotInfo) {
     setBookingDrawerType("reservation");
@@ -528,9 +531,9 @@ function AppInner() {
                 activeTime={activeTime}
                 setActiveTime={setActiveTime}
               />
-              {activeView === "Diagram"   && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} />}
+              {activeView === "Gantt"     && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} hideCancelledNoshow={hideCancelledNoshow} onHideCancelledNoshowChange={setHideCancelledNoshow} />}
               {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onUpdateStatus={handleUpdateStatus} forceRender={forceRender} />}
-              {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} onWalkinRequest={(tables, time) => { if (!tables.length) return; setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: tables[0].section as any, table: tables[0].table, additionalTables: tables.length > 1 ? tables.slice(1).map(t => ({ section: t.section as any, table: t.table })) : undefined, timeSlot: time }); setBookingDrawerOpen(true); }} />}
+              {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} hideCancelledNoshow={hideCancelledNoshow} onOpenTableConfig={() => setDrawerOpen(true)} onWalkinRequest={(tables, time) => { if (!tables.length) return; setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: tables[0].section as any, table: tables[0].table, additionalTables: tables.length > 1 ? tables.slice(1).map(t => ({ section: t.section as any, table: t.table })) : undefined, timeSlot: time }); setBookingDrawerOpen(true); }} />}
             </main>
           </div>
         )}
@@ -551,6 +554,13 @@ function AppInner() {
         onClose={() => setSelectedBooking(null)}
         onOpenCRM={() => { setSelectedBooking(null); setActiveTab("CRM"); }}
         onStatusChange={handleUpdateStatus}
+      />
+      <OrderDetailsPanel
+        bookingId={orderPanelId}
+        selectedDay={selectedDay}
+        onClose={() => setOrderPanelId(null)}
+        onStatusChange={handleUpdateStatus}
+        onBookingUpdated={() => setForceRender(v => v + 1)}
       />
       <BookingDrawer
         open={bookingDrawerOpen}
