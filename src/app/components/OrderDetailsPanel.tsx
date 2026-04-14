@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { ALL_BOOKINGS, STATUS_META, updateBooking, getPeriodForTime, type Status, type Section } from "../data/bookings";
 import { FoodCatalog } from "./FoodCatalog";
+import { ErrorBoundary } from "./ErrorBoundary";
 import {
   formatVND, KITCHEN_META, ORDER_STATUS_META,
   type CartLine, type OrderBatch, type OrderStatus,
@@ -980,39 +981,75 @@ function CartTab({ orderBatches, cartFilter, setCartFilter, onOpenCatalog }: Car
 
                           {/* Line items */}
                           {lines.map(line => (
-                            <div key={line.item.id} className="flex items-start gap-2 py-1.5">
-                              {/* Qty bubble */}
-                              <div
-                                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center font-bold"
-                                style={{ backgroundColor: "#8b5cf6", color: "#fff", fontSize: 12 }}
-                              >
-                                {line.qty}
-                              </div>
+                            <div key={line.lineId || line.item.id} className="flex flex-col gap-1 py-1.5">
+                              {/* Main Line */}
+                              <div className="flex items-start gap-2">
+                                {/* Qty bubble */}
+                                <div
+                                  className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center font-bold"
+                                  style={{ backgroundColor: "#8b5cf6", color: "#fff", fontSize: 12 }}
+                                >
+                                  {line.qty}
+                                </div>
 
-                              {/* Name + modifiers + note */}
-                              <div className="flex-1 min-w-0">
-                                <p className="text-gray-800 font-semibold" style={{ fontSize: 12 }}>
-                                  {line.item.name}
-                                </p>
-                                {line.modifiers?.map((mod, mi) => (
-                                  <p key={mi} className="text-gray-500 ml-1" style={{ fontSize: 11 }}>
-                                    • {mod}
+                                {/* Name + modifiers + note */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-gray-800 font-semibold" style={{ fontSize: 12 }}>
+                                    {line.item.name}
                                   </p>
-                                ))}
-                                {line.note && (
-                                  <div className="flex items-center gap-1 mt-0.5">
-                                    <MessageSquare size={10} className="text-gray-400 shrink-0" />
-                                    <span className="text-gray-500 italic" style={{ fontSize: 11 }}>
-                                      {line.note}
-                                    </span>
-                                  </div>
-                                )}
+                                  {line.modifiers?.map((mod, mi) => (
+                                    <p key={mi} className="text-gray-500 ml-1" style={{ fontSize: 11 }}>
+                                      • {mod}
+                                    </p>
+                                  ))}
+                                  {line.note && (
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <MessageSquare size={10} className="text-gray-400 shrink-0" />
+                                      <span className="text-gray-500 italic" style={{ fontSize: 11 }}>
+                                        {line.note}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Price */}
+                                <span className="shrink-0 font-semibold" style={{ fontSize: 12, color: "#0d9488" }}>
+                                  {formatVND(line.item.price * line.qty)}
+                                </span>
                               </div>
 
-                              {/* Price */}
-                              <span className="shrink-0 font-semibold" style={{ fontSize: 12, color: "#0d9488" }}>
-                                {formatVND(line.item.price * line.qty)}
-                              </span>
+                              {/* Nested Combo Items */}
+                              {line.item.type === "combo" && (
+                                <div className="ml-9 space-y-1 mt-1 border-l-2 border-gray-100 pl-2">
+                                  {line.item.includedItems.map((child, ci) => {
+                                    const childSel = line.comboSelections?.find(s => s.itemId === child.item.id);
+                                    return (
+                                      <div key={child.item.id + ci} className="flex flex-col">
+                                        <div className="flex items-start justify-between">
+                                          <p className="text-gray-600 font-medium" style={{ fontSize: 11 }}>
+                                            <span className="text-gray-400 mr-1">↪</span>
+                                            {child.fixedQuantity * line.qty} x {child.item.name}
+                                          </p>
+                                          {/* Price for combo child is 0 or hidden */}
+                                        </div>
+                                        {childSel?.modifiers?.map((mod, mi) => (
+                                          <p key={mi} className="text-gray-400 ml-4" style={{ fontSize: 10 }}>
+                                            • {mod}
+                                          </p>
+                                        ))}
+                                        {childSel?.note && (
+                                          <div className="flex items-center gap-1 mt-0.5 ml-4">
+                                            <MessageSquare size={9} className="text-gray-400 shrink-0" />
+                                            <span className="text-gray-400 italic" style={{ fontSize: 10 }}>
+                                              {childSel.note}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1614,15 +1651,17 @@ export function OrderDetailsPanel({ bookingId, selectedDay: _selectedDay, onClos
       </div>
 
       {/* ─── Food Catalog Overlay ─────────────────────────────── */}
-      <FoodCatalog
-        open={catalogOpen}
-        bookingRef={generateBookingId(booking.id)}
-        bookingName={booking.guestName}
-        initialCart={[]}
-        onBack={() => setCatalogOpen(false)}
-        onSaveOnly={handleSaveOnly}
-        onSaveAndSend={handleSaveAndSend}
-      />
+      <ErrorBoundary>
+        <FoodCatalog
+          open={catalogOpen}
+          bookingRef={generateBookingId(booking.id)}
+          bookingName={booking.guestName}
+          initialCart={[]}
+          onBack={() => setCatalogOpen(false)}
+          onSaveOnly={handleSaveOnly}
+          onSaveAndSend={handleSaveAndSend}
+        />
+      </ErrorBoundary>
     </>
   );
 }

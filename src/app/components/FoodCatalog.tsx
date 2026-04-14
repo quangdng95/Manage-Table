@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import {
   FOOD_CATEGORIES, FOOD_ITEMS, KITCHEN_META, formatVND,
-  type CartLine, type FoodItem, type AdditionGroup, type SelectedAddition,
+  type CartLine, type FoodItem, type AdditionGroup, type SelectedAddition, type AnyItem, type ComboItem, type NestedComboSelection, isComboOutOfStock
 } from "../data/foodMenu";
 
 // ── Shared types ────────────────────────────────────────────────
@@ -12,11 +12,13 @@ import {
 type AddState = Record<string, Record<string, number>>;
 
 interface FoodModalState {
-  item: FoodItem;
+  item: AnyItem;
   editingLineId?: string;   // set when editing an existing cart line
   qty: number;
   note: string;
   addState: AddState;
+  comboAddState?: Record<string, AddState>;
+  comboNote?: Record<string, string>;
 }
 
 // ── Empty Cart SVG ─────────────────────────────────────────────
@@ -150,22 +152,76 @@ function FoodDetailModal({
 }) {
   const item = modal.item;
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [activeComboStep, setActiveComboStep] = useState(0);
   const cat = FOOD_CATEGORIES.find(c => c.id === item.categoryId);
   const hasAdditions = (item.additions?.length ?? 0) > 0;
   const isEditing = !!modal.editingLineId;
 
+  const [wizardPhase, setWizardPhase] = useState<"overview" | "config" | "summary">(
+    isEditing && item.type === "combo" ? "summary" : "overview"
+  );
+
+  // Compute unrolled instances for combos
+  const unrolledItems = useMemo(() => {
+    if (item.type !== "combo") return [];
+    const items: { item: FoodItem, instanceId: string, globalIndex: number }[] = [];
+    let globalIndex = 1;
+    item.includedItems?.forEach(child => {
+      for (let i = 0; i < child.fixedQuantity; i++) {
+        items.push({
+          item: child.item,
+          instanceId: `${child.item.id}_${i}`,
+          globalIndex: globalIndex++
+        });
+      }
+    });
+    return items;
+  }, [item]);
+
+  const isItemConfigured = (instanceId: string) => {
+    const unrolled = unrolledItems.find(u => u.instanceId === instanceId);
+    if (!unrolled) return false;
+    
+    const hasNote = !!modal.comboNote?.[instanceId];
+    const hasState = Object.keys(modal.comboAddState?.[instanceId] || {}).length > 0;
+    const hasInteracted = hasNote || hasState;
+
+    const reqGroups = unrolled.item.additions?.filter(g => g.required) || [];
+    if (reqGroups.length === 0) return hasInteracted;
+
+    for (const g of reqGroups) {
+      const state = modal.comboAddState?.[instanceId]?.[g.id];
+      if (!state) return false;
+      const hasSelection = Object.values(state).some(qty => qty > 0);
+      if (!hasSelection) return false;
+    }
+    return true;
+  };
+
   // Extra price from selected additions
   const additionsExtra = useMemo(() => {
     let extra = 0;
-    item.additions?.forEach(group => {
-      const opts = modal.addState[group.id] ?? {};
-      group.options.forEach(opt => {
-        const qty = opts[opt.id] ?? 0;
-        if (qty > 0 && opt.price) extra += opt.price * qty;
+    if (item.type === "combo") {
+       unrolledItems.forEach(({ item: childItem, instanceId }) => {
+           childItem.additions?.forEach(group => {
+               const opts = modal.comboAddState?.[instanceId]?.[group.id] || {};
+               group.options?.forEach(opt => {
+                   const qty = opts[opt.id] ?? 0;
+                   if (qty > 0 && opt.price) extra += (opt.price * qty); 
+               });
+           });
+       });
+    } else {
+      item.additions?.forEach(group => {
+        const opts = modal.addState[group.id] ?? {};
+        group.options.forEach(opt => {
+          const qty = opts[opt.id] ?? 0;
+          if (qty > 0 && opt.price) extra += opt.price * qty;
+        });
       });
-    });
+    }
     return extra;
-  }, [item.additions, modal.addState]);
+  }, [item, modal.addState, modal.comboAddState, unrolledItems]);
 
   const totalPrice = (item.price + additionsExtra) * modal.qty;
 
@@ -187,6 +243,30 @@ function FoodDetailModal({
     const g   = modal.addState[groupId] ?? {};
     const next = Math.max(0, (g[optId] ?? 0) + delta);
     onUpdate({ addState: { ...modal.addState, [groupId]: { ...g, [optId]: next } } });
+  }
+
+  // --- Combo handlers ---
+  function toggleComboRadio(instanceId: string, groupId: string, optId: string) {
+    const childAddState = modal.comboAddState?.[instanceId] || {};
+    onUpdate({ comboAddState: { ...modal.comboAddState, [instanceId]: { ...childAddState, [groupId]: { [optId]: 1 } } } });
+  }
+
+  function toggleComboCheckbox(instanceId: string, groupId: string, optId: string) {
+    const childAddState = modal.comboAddState?.[instanceId] || {};
+    const g = childAddState[groupId] || {};
+    const cur = g[optId] ?? 0;
+    onUpdate({ comboAddState: { ...modal.comboAddState, [instanceId]: { ...childAddState, [groupId]: { ...g, [optId]: cur ? 0 : 1 } } } });
+  }
+
+  function changeComboCounter(instanceId: string, groupId: string, optId: string, delta: number) {
+    const childAddState = modal.comboAddState?.[instanceId] || {};
+    const g = childAddState[groupId] || {};
+    const next = Math.max(0, (g[optId] ?? 0) + delta);
+    onUpdate({ comboAddState: { ...modal.comboAddState, [instanceId]: { ...childAddState, [groupId]: { ...g, [optId]: next } } } });
+  }
+
+  function updateComboNote(instanceId: string, note: string) {
+    onUpdate({ comboNote: { ...modal.comboNote, [instanceId]: note } });
   }
 
   return (
@@ -242,21 +322,23 @@ function FoodDetailModal({
             </div>
 
             {/* Notes textarea */}
-            <div className="flex-1 flex flex-col">
-              <label
-                className="block text-gray-400 mb-1.5"
-                style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}
-              >
-                Notes (optional)
-              </label>
-              <textarea
-                value={modal.note}
-                onChange={e => onUpdate({ note: e.target.value })}
-                placeholder="Special requests, allergies, preparation notes…"
-                className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 resize-none text-gray-800 focus:outline-none focus:border-teal-400 transition-colors"
-                style={{ fontSize: 12, lineHeight: 1.65, minHeight: 80 }}
-              />
-            </div>
+            {item.type !== "combo" && (
+              <div className="flex-1 flex flex-col">
+                <label
+                  className="block text-gray-400 mb-1.5"
+                  style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}
+                >
+                  Notes (optional)
+                </label>
+                <textarea
+                  value={modal.note}
+                  onChange={e => onUpdate({ note: e.target.value })}
+                  placeholder="Special requests, allergies, preparation notes…"
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 resize-none text-gray-800 focus:outline-none focus:border-teal-400 transition-colors"
+                  style={{ fontSize: 12, lineHeight: 1.65, minHeight: 80 }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Right col: info + additions (scrollable) */}
@@ -303,9 +385,148 @@ function FoodDetailModal({
             </div>
 
             {/* Additions form */}
-            {hasAdditions && (
-              <div className="space-y-5">
-                <div className="h-px bg-gray-100" />
+            {item.type === "combo" ? (
+              <div className="space-y-6 mt-4 border-t border-gray-100 pt-4">
+                {wizardPhase === "overview" && (
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2">Included Items</h3>
+                    <div className="space-y-2">
+                       {item.includedItems?.map((child, idx) => (
+                         <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
+                           <span className="text-xl" style={{ minWidth: 24, textAlign: 'center' }}>{child.item.emoji}</span>
+                           <span className="font-semibold text-gray-700 text-sm">{child.fixedQuantity}x {child.item.name}</span>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {wizardPhase === "config" && (() => {
+                  const activeUnrolled = unrolledItems[activeComboStep];
+                  if (!activeUnrolled) return null;
+                  const { item: childItem, instanceId } = activeUnrolled;
+                  
+                  return (
+                    <div key={instanceId} className="space-y-4">
+                      {/* Stepper Header */}
+                      <div className="flex gap-2 pb-3 border-b border-gray-100 overflow-x-auto" style={{ minHeight: 48 }}>
+                        {unrolledItems.map((u, i) => {
+                          const isActive = i === activeComboStep;
+                          const isConfig = isItemConfigured(u.instanceId);
+                          return (
+                            <button
+                              key={u.instanceId}
+                              onClick={() => setActiveComboStep(i)}
+                              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${isActive ? "border-teal-400 bg-teal-50" : "border-gray-200 hover:bg-gray-50"}`}
+                            >
+                              <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold ${isActive ? "bg-teal-500 text-white" : isConfig ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`} style={{ fontSize: 10 }}>
+                                {isConfig && !isActive ? <Check size={12} strokeWidth={3} /> : u.globalIndex}
+                              </div>
+                              <span className={`text-xs whitespace-nowrap ${isActive ? "font-bold text-teal-800" : "font-medium text-gray-600"}`}>
+                                {u.item.name.substring(0, 16)}{u.item.name.length > 16 ? "…" : ""}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <h4 className="font-bold text-gray-800 flex items-center gap-2 mt-2" style={{ fontSize: 16 }}>
+                        <span className="text-xl">{childItem.emoji}</span>
+                        {childItem.name}
+                      </h4>
+                      
+                      {/* Note for this child */}
+                      <div>
+                        <input 
+                          placeholder={`Specific note for ${childItem.name}...`} 
+                          className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-teal-400 text-gray-800 transition-colors"
+                          value={modal.comboNote?.[instanceId] || ""}
+                          onChange={(e) => updateComboNote(instanceId, e.target.value)}
+                          style={{ fontSize: 13 }}
+                        />
+                      </div>
+                      
+                      {/* Child Additions */}
+                      {(childItem.additions?.length ?? 0) === 0 ? (
+                        <p className="text-gray-400 italic text-xs mt-1">No customizable options.</p>
+                      ) : childItem.additions?.map(group => (
+                        <AdditionGroupSection
+                          key={group.id}
+                          group={group}
+                          state={modal.comboAddState?.[instanceId]?.[group.id] || {}}
+                          onRadio={(optId) => toggleComboRadio(instanceId, group.id, optId)}
+                          onCheckbox={(optId) => toggleComboCheckbox(instanceId, group.id, optId)}
+                          onCounter={(optId, delta) => changeComboCounter(instanceId, group.id, optId, delta)}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {wizardPhase === "summary" && (
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2">Review Configuration</h3>
+                    
+                    <div className="space-y-3">
+                      {unrolledItems.map((u) => {
+                        const state = modal.comboAddState?.[u.instanceId] || {};
+                        const note = modal.comboNote?.[u.instanceId] || "";
+                        
+                        const mods: string[] = [];
+                        u.item.additions?.forEach(group => {
+                          const opts = state[group.id] || {};
+                          group.options.forEach(opt => {
+                            const qty = opts[opt.id] ?? 0;
+                            if (qty > 0) mods.push(group.type === "counter" ? `${opt.label} ×${qty}` : opt.label);
+                          });
+                        });
+                        
+                        const hasContent = mods.length > 0 || note;
+                        
+                        return (
+                          <div key={u.instanceId} className="px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50">
+                            <div className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-white border border-gray-200 text-gray-600 flex items-center justify-center font-bold" style={{ fontSize: 10 }}>{u.globalIndex}</span>
+                              {u.item.name}
+                            </div>
+                            
+                            {hasContent ? (
+                              <div className="mt-1.5 pl-7 space-y-1">
+                                {mods.map((m, i) => (
+                                  <div key={i} className="text-xs text-gray-600 flex items-center gap-1.5 before:content-['•'] before:text-gray-400">{m}</div>
+                                ))}
+                                {note && (
+                                  <div className="text-xs text-orange-600 italic bg-orange-50 px-2 py-1.5 rounded-lg inline-block mt-1 border border-orange-100">
+                                    Note: {note}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="mt-1 pl-7 text-xs text-gray-400 italic">No additions configured</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Global Note for Combo */}
+                    <div className="pt-4 mt-2 border-t border-gray-100 flex flex-col">
+                      <label className="block text-gray-500 mb-1.5" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>
+                        Global Combo Note
+                      </label>
+                      <textarea
+                        value={modal.note}
+                        onChange={e => onUpdate({ note: e.target.value })}
+                        placeholder="Logistical requests for the entire combo..."
+                        className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 resize-none text-gray-800 focus:outline-none focus:border-teal-400 transition-colors"
+                        style={{ fontSize: 12, lineHeight: 1.65, minHeight: 60 }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : hasAdditions ? (
+              <div className="space-y-5 mt-4 border-t border-gray-100 pt-4">
                 {item.additions!.map(group => (
                   <AdditionGroupSection
                     key={group.id}
@@ -317,50 +538,88 @@ function FoodDetailModal({
                   />
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
         {/* ── Footer ── */}
         <div className="shrink-0 border-t border-gray-100 px-4 py-3 flex items-center gap-3 bg-white">
-          {/* Qty stepper */}
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => onUpdate({ qty: Math.max(1, modal.qty - 1) })}
-              disabled={modal.qty <= 1}
-              className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors font-light"
-              style={{ fontSize: 22 }}
-            >−</button>
-            <div
-              className="font-bold text-gray-800 text-center"
-              style={{ fontSize: 17, minWidth: 38 }}
-            >
-              {modal.qty}
-            </div>
-            <button
-              onClick={() => onUpdate({ qty: modal.qty + 1 })}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-light transition-all hover:opacity-90 active:scale-[0.96]"
-              style={{ fontSize: 22, background: "linear-gradient(135deg, #0d9488, #10b981)" }}
-            >+</button>
-          </div>
-
-          {/* CTA button */}
-          <button
-            onClick={onSave}
-            className="flex-1 py-2.5 rounded-xl text-white font-bold transition-all hover:opacity-90 active:scale-[0.98]"
-            style={{
-              fontSize: 14,
-              background: isEditing
-                ? "linear-gradient(135deg, #7c3aed, #8b5cf6)"
-                : "linear-gradient(135deg, #0d9488, #10b981)",
-              boxShadow: isEditing
-                ? "0 4px 14px rgba(139,92,246,0.4)"
-                : "0 4px 14px rgba(16,185,129,0.4)",
-            }}
-          >
-            {isEditing ? "Update Cart" : "Add to Cart"} · {formatVND(totalPrice)}
-          </button>
+          {item.type === "combo" ? (
+             <>
+               {wizardPhase === "overview" && (
+                 <>
+                   <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-gray-600 border border-gray-200 font-bold hover:bg-gray-50 transition-all">Cancel</button>
+                   <button onClick={() => setWizardPhase("config")} className="flex-1 py-2.5 rounded-xl text-white font-bold transition-all bg-teal-600 hover:bg-teal-700">Configure Items</button>
+                 </>
+               )}
+               {wizardPhase === "config" && (
+                 <>
+                   <button 
+                     onClick={() => {
+                       if (activeComboStep > 0) setActiveComboStep(s => s - 1);
+                       else setWizardPhase("overview");
+                     }}
+                     className="px-4 py-2.5 rounded-xl text-gray-600 border border-gray-200 font-bold transition-all hover:bg-gray-50 active:scale-[0.98]"
+                     style={{ fontSize: 14 }}
+                   >
+                     〈 Back
+                   </button>
+                   
+                   {activeComboStep < unrolledItems.length - 1 ? (
+                     <button
+                       onClick={() => setActiveComboStep(s => s + 1)}
+                       className="flex-1 py-2.5 rounded-xl text-white font-bold transition-all hover:opacity-90 active:scale-[0.98]"
+                       style={{ fontSize: 14, background: "linear-gradient(135deg, #0d9488, #10b981)", boxShadow: "0 4px 14px rgba(16,185,129,0.4)" }}
+                     >
+                       Next 〉
+                     </button>
+                   ) : (
+                     <button
+                       onClick={() => setWizardPhase("summary")}
+                       className="flex-1 py-2.5 rounded-xl text-teal-700 bg-teal-50 border-2 border-teal-200 font-bold transition-all hover:bg-teal-100 hover:border-teal-300"
+                       style={{ fontSize: 14 }}
+                     >
+                       Review Order 〉
+                     </button>
+                   )}
+                 </>
+               )}
+               {wizardPhase === "summary" && (
+                 <>
+                   <button 
+                     onClick={() => setWizardPhase("config")}
+                     className="px-4 py-2.5 rounded-xl text-gray-600 border border-gray-200 font-bold transition-all hover:bg-gray-50"
+                     style={{ fontSize: 14 }}
+                   >
+                     〈 Edit
+                   </button>
+                   <div className="flex items-center gap-1 shrink-0">
+                     <button onClick={() => onUpdate({ qty: Math.max(1, modal.qty - 1) })} disabled={modal.qty <= 1} className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors font-light" style={{ fontSize: 22 }}>−</button>
+                     <div className="font-bold text-gray-800 text-center" style={{ fontSize: 17, minWidth: 38 }}>{modal.qty}</div>
+                     <button onClick={() => onUpdate({ qty: modal.qty + 1 })} className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-light transition-all hover:opacity-90 active:scale-[0.96]" style={{ fontSize: 22, background: "linear-gradient(135deg, #0d9488, #10b981)" }}>+</button>
+                   </div>
+                   <button onClick={onSave} className="flex-1 py-2.5 rounded-xl text-white font-bold transition-all hover:opacity-90 active:scale-[0.98]" style={{ fontSize: 14, background: isEditing ? "linear-gradient(135deg, #7c3aed, #8b5cf6)" : "linear-gradient(135deg, #0d9488, #10b981)", boxShadow: isEditing ? "0 4px 14px rgba(139,92,246,0.4)" : "0 4px 14px rgba(16,185,129,0.4)" }}>
+                     {isEditing ? "Update Cart" : "Add to Cart"} · {formatVND(totalPrice)}
+                   </button>
+                 </>
+               )}
+             </>
+          ) : (
+             <>
+               {/* Qty stepper */}
+               <div className="flex items-center gap-1 shrink-0">
+                 <button onClick={() => onUpdate({ qty: Math.max(1, modal.qty - 1) })} disabled={modal.qty <= 1} className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors font-light" style={{ fontSize: 22 }}>−</button>
+                 <div className="font-bold text-gray-800 text-center" style={{ fontSize: 17, minWidth: 38 }}>{modal.qty}</div>
+                 <button onClick={() => onUpdate({ qty: modal.qty + 1 })} className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-light transition-all hover:opacity-90 active:scale-[0.96]" style={{ fontSize: 22, background: "linear-gradient(135deg, #0d9488, #10b981)" }}>+</button>
+               </div>
+               {/* CTA button */}
+               <button onClick={onSave} className="flex-1 py-2.5 rounded-xl text-white font-bold transition-all hover:opacity-90 active:scale-[0.98]" style={{ fontSize: 14, background: isEditing ? "linear-gradient(135deg, #7c3aed, #8b5cf6)" : "linear-gradient(135deg, #0d9488, #10b981)", boxShadow: isEditing ? "0 4px 14px rgba(139,92,246,0.4)" : "0 4px 14px rgba(16,185,129,0.4)" }}>
+                 {isEditing ? "Update Cart" : "Add to Cart"} · {formatVND(totalPrice)}
+               </button>
+             </>
+          )}
         </div>
+
       </div>
     </div>
   );
@@ -393,6 +652,7 @@ export function FoodCatalog({
   const [sortOpen, setSortOpen] = useState(false);
   const [sort, setSort]         = useState<"default" | "name" | "price-asc" | "price-desc">("default");
   const [modal, setModal]       = useState<FoodModalState | null>(null);
+  const [toast, setToast]       = useState<string | null>(null);
   const sortRef = useRef<HTMLDivElement>(null);
 
   // Reset when catalog opens
@@ -445,27 +705,71 @@ export function FoodCatalog({
     setCart(prev => prev.filter(l => l.lineId !== lineId));
   }
 
-  // ── Modal helpers ──────────────────────────────────────────────
-  function openModal(item: FoodItem, editLine?: CartLine) {
-    if (editLine) {
-      // Edit mode: pre-fill from existing line
-      const addState: AddState = {};
-      editLine.selectedAdditions?.forEach(sa => {
-        if (!addState[sa.groupId]) addState[sa.groupId] = {};
-        addState[sa.groupId][sa.optionId] = sa.qty;
+  // ── Handlers ───────────────────────────────────────────────────
+  function handleItemClick(item: AnyItem) {
+    if (item.type === "combo") {
+      const hasAdds = item.includedItems?.some(child => 
+        (child.item.additions?.length ?? 0) > 0
+      );
+      if (!hasAdds) {
+        addComboToCart(item);
+        setToast(`Added ${item.name} to Cart`);
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+    }
+    openModal(item);
+  }
+
+  function addComboToCart(item: ComboItem) {
+      setCart(prev => {
+          const cleanIdx = prev.findIndex(
+            l => l.item.id === item.id && !l.note && !(l.comboSelections?.length)
+          );
+          if (cleanIdx !== -1) {
+            return prev.map((l, i) => i === cleanIdx ? { ...l, qty: l.qty + 1 } : l);
+          }
+          return [...prev, { lineId: `${item.id}-${Date.now()}`, item: item, qty: 1 }];
       });
-      setModal({ item, editingLineId: editLine.lineId, qty: editLine.qty, note: editLine.note ?? "", addState });
+  }
+
+  // ── Modal helpers ──────────────────────────────────────────────
+  function openModal(item: AnyItem, editLine?: CartLine) {
+    if (editLine) {
+        if (item.type === "combo") {
+          const comboAddState: Record<string, AddState> = {};
+          const comboNote: Record<string, string> = {};
+          const idCounters: Record<string, number> = {};
+          editLine.comboSelections?.forEach(sel => {
+             const idx = idCounters[sel.itemId] || 0;
+             const instanceId = `${sel.itemId}_${idx}`;
+             idCounters[sel.itemId] = idx + 1;
+
+             const childAddState: AddState = {};
+             sel.selectedAdditions?.forEach(sa => {
+                if (!childAddState[sa.groupId]) childAddState[sa.groupId] = {};
+                childAddState[sa.groupId][sa.optionId] = sa.qty;
+             });
+             comboAddState[instanceId] = childAddState;
+             if (sel.note) comboNote[instanceId] = sel.note;
+          });
+          setModal({ item, editingLineId: editLine.lineId, qty: editLine.qty, note: editLine.note ?? "", addState: {}, comboAddState, comboNote });
+      } else {
+          const addState: AddState = {};
+          editLine.selectedAdditions?.forEach(sa => {
+            if (!addState[sa.groupId]) addState[sa.groupId] = {};
+            addState[sa.groupId][sa.optionId] = sa.qty;
+          });
+          setModal({ item, editingLineId: editLine.lineId, qty: editLine.qty, note: editLine.note ?? "", addState });
+      }
     } else {
-      setModal({ item, qty: 1, note: "", addState: {} });
+      setModal({ item, qty: 1, note: "", addState: {}, comboAddState: {}, comboNote: {} });
     }
   }
 
-  function updateModal(patch: Partial<FoodModalState>) {
-    setModal(prev => prev ? { ...prev, ...patch } : prev);
-  }
-
-  function buildModifierLabels(item: FoodItem, addState: AddState): string[] {
+  function buildModifierLabels(item: AnyItem, addState: AddState): string[] {
     const labels: string[] = [];
+    if (item.type === "combo") return labels;
     item.additions?.forEach(group => {
       const opts = addState[group.id] ?? {};
       group.options.forEach(opt => {
@@ -476,49 +780,102 @@ export function FoodCatalog({
     return labels;
   }
 
+  function updateModal(patch: Partial<FoodModalState>) {
+    setModal(prev => prev ? { ...prev, ...patch } : null);
+  }
+
   function handleModalSave() {
     if (!modal) return;
 
-    // Collect selected additions
-    const selectedAdditions: SelectedAddition[] = [];
-    Object.entries(modal.addState).forEach(([groupId, opts]) => {
-      Object.entries(opts).forEach(([optionId, qty]) => {
-        if (qty > 0) selectedAdditions.push({ groupId, optionId, qty });
-      });
-    });
-    const modifiers  = buildModifierLabels(modal.item, modal.addState);
-    const hasCustom  = !!modal.note || selectedAdditions.length > 0;
-
-    if (modal.editingLineId) {
-      // Edit mode: overwrite the specific line
-      setCart(prev => prev.map(l =>
-        l.lineId === modal.editingLineId
-          ? { ...l, qty: modal.qty, note: modal.note || undefined, selectedAdditions, modifiers: modifiers.length ? modifiers : undefined }
-          : l
-      ));
-    } else if (!hasCustom) {
-      // Rule 1: merge into the existing clean line for this item
-      setCart(prev => {
-        const cleanIdx = prev.findIndex(
-          l => l.item.id === modal.item.id && !l.note && !(l.modifiers?.length),
-        );
-        if (cleanIdx !== -1) {
-          return prev.map((l, i) => i === cleanIdx ? { ...l, qty: l.qty + modal.qty } : l);
+    if (modal.item.type === "combo") {
+        const comboSelections: NestedComboSelection[] = [];
+        modal.item.includedItems?.forEach(child => {
+            for (let i = 0; i < child.fixedQuantity; i++) {
+                const instanceId = `${child.item.id}_${i}`;
+                const childAddState = modal.comboAddState?.[instanceId] || {};
+                const childNote = modal.comboNote?.[instanceId];
+                const childSelectedAdditions: SelectedAddition[] = [];
+                Object.entries(childAddState).forEach(([groupId, opts]) => {
+                    Object.entries(opts).forEach(([optionId, qty]) => {
+                        if (qty > 0) childSelectedAdditions.push({ groupId, optionId, qty });
+                    });
+                });
+                const childModifiers = buildModifierLabels(child.item, childAddState);
+                if (childSelectedAdditions.length > 0 || childNote || childModifiers.length > 0) {
+                   comboSelections.push({
+                       itemId: child.item.id,
+                       selectedAdditions: childSelectedAdditions,
+                       modifiers: childModifiers.length ? childModifiers : undefined,
+                       note: childNote
+                   });
+                }
+            }
+        });
+        
+        const hasCustom = !!modal.note || comboSelections.length > 0;
+        
+        if (modal.editingLineId) {
+          setCart(prev => prev.map(l =>
+            l.lineId === modal.editingLineId
+              ? { ...l, qty: modal.qty, note: modal.note || undefined, comboSelections }
+              : l
+          ));
+        } else if (!hasCustom) {
+            setCart(prev => {
+                const cleanIdx = prev.findIndex(
+                  l => l.item.id === modal.item.id && !l.note && !(l.comboSelections?.length)
+                );
+                if (cleanIdx !== -1) {
+                  return prev.map((l, i) => i === cleanIdx ? { ...l, qty: l.qty + modal.qty } : l);
+                }
+                return [...prev, { lineId: `${modal.item.id}-${Date.now()}`, item: modal.item, qty: modal.qty, comboSelections: comboSelections.length ? comboSelections : undefined }];
+            });
+        } else {
+             setCart(prev => [...prev, {
+                lineId: `${modal.item.id}-${Date.now()}`,
+                item: modal.item,
+                qty: modal.qty,
+                note: modal.note || undefined,
+                comboSelections: comboSelections.length ? comboSelections : undefined,
+             }]);
         }
-        return [...prev, { lineId: `${modal.item.id}-${Date.now()}`, item: modal.item, qty: modal.qty }];
-      });
     } else {
-      // Rule 2: always a new separate line
-      setCart(prev => [...prev, {
-        lineId:             `${modal.item.id}-${Date.now()}`,
-        item:               modal.item,
-        qty:                modal.qty,
-        note:               modal.note || undefined,
-        selectedAdditions,
-        modifiers:          modifiers.length ? modifiers : undefined,
-      }]);
-    }
+        const selectedAdditions: SelectedAddition[] = [];
+        Object.entries(modal.addState).forEach(([groupId, opts]) => {
+          Object.entries(opts).forEach(([optionId, qty]) => {
+            if (qty > 0) selectedAdditions.push({ groupId, optionId, qty });
+          });
+        });
+        const modifiers  = buildModifierLabels(modal.item, modal.addState);
+        const hasCustom  = !!modal.note || selectedAdditions.length > 0;
 
+        if (modal.editingLineId) {
+          setCart(prev => prev.map(l =>
+            l.lineId === modal.editingLineId
+              ? { ...l, qty: modal.qty, note: modal.note || undefined, selectedAdditions, modifiers: modifiers.length ? modifiers : undefined }
+              : l
+          ));
+        } else if (!hasCustom) {
+          setCart(prev => {
+            const cleanIdx = prev.findIndex(
+              l => l.item.id === modal.item.id && !l.note && !(l.modifiers?.length),
+            );
+            if (cleanIdx !== -1) {
+              return prev.map((l, i) => i === cleanIdx ? { ...l, qty: l.qty + modal.qty } : l);
+            }
+            return [...prev, { lineId: `${modal.item.id}-${Date.now()}`, item: modal.item, qty: modal.qty }];
+          });
+        } else {
+          setCart(prev => [...prev, {
+            lineId:             `${modal.item.id}-${Date.now()}`,
+            item:               modal.item,
+            qty:                modal.qty,
+            note:               modal.note || undefined,
+            selectedAdditions,
+            modifiers:          modifiers.length ? modifiers : undefined,
+          }]);
+        }
+    }
     setModal(null);
   }
 
@@ -708,19 +1065,22 @@ export function FoodCatalog({
                   .reduce((s, l) => s + l.qty, 0);
                 const inCart = totalQtyForItem > 0;
                 const cat    = FOOD_CATEGORIES.find(c => c.id === item.categoryId);
-                const hasAdds = (item.additions?.length ?? 0) > 0;
+                const isCombo = item.type === "combo";
+                const outOfStock = isCombo ? isComboOutOfStock(item as ComboItem) : item.outOfStock;
+                const hasAdds = !isCombo && (item.additions?.length ?? 0) > 0;
 
                 return (
                   <button
                     key={item.id}
-                    onClick={() => openModal(item)}
-                    className="food-card relative flex flex-col text-left rounded-2xl overflow-hidden transition-all hover:shadow-lg active:scale-[0.97]"
+                    onClick={() => !outOfStock && handleItemClick(item)}
+                    disabled={outOfStock}
+                    className={`food-card relative flex flex-col text-left rounded-2xl overflow-hidden transition-all ${outOfStock ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:shadow-lg active:scale-[0.97]'}`}
                     style={{
-                      border: `2px solid ${inCart ? "#3b82f6" : "transparent"}`,
-                      boxShadow: inCart
+                      border: `2px solid ${inCart && !outOfStock ? "#3b82f6" : "transparent"}`,
+                      boxShadow: inCart && !outOfStock
                         ? "0 0 0 2px rgba(59,130,246,0.25), 0 4px 12px rgba(0,0,0,0.08)"
-                        : "0 1px 4px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04)",
-                      backgroundColor: "white",
+                        : !outOfStock ? "0 1px 4px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04)" : "none",
+                      backgroundColor: outOfStock ? "#f9fafb" : "white",
                     }}
                   >
                     {/* Image */}
@@ -735,10 +1095,10 @@ export function FoodCatalog({
                       {item.emoji}
                       <div
                         className="food-card-overlay absolute inset-0 bg-blue-500 transition-opacity duration-150"
-                        style={{ opacity: inCart ? 0.07 : 0 }}
+                        style={{ opacity: inCart && !outOfStock ? 0.07 : 0 }}
                       />
                       {/* "+" badge for items with additions */}
-                      {hasAdds && (
+                      {hasAdds && !outOfStock && (
                         <div
                           className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-white font-bold"
                           style={{ fontSize: 9, backgroundColor: "rgba(0,0,0,0.45)" }}
@@ -746,10 +1106,28 @@ export function FoodCatalog({
                           OPTIONS
                         </div>
                       )}
+                      
+                      {isCombo && !outOfStock && (
+                        <div
+                          className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full text-white font-bold"
+                          style={{ fontSize: 9.5, backgroundColor: "#ef4444", boxShadow: "0 2px 4px rgba(239,68,68,0.4)", zIndex: 10 }}
+                        >
+                          SAVE 20%
+                        </div>
+                      )}
+
+                      {outOfStock && (
+                        <div
+                          className="absolute inset-0 flex items-center justify-center"
+                          style={{ backgroundColor: "rgba(255,255,255,0.7)" }}
+                        >
+                           <span className="px-2 py-1 bg-gray-800 text-white rounded font-bold" style={{ fontSize: 10 }}>SOLD OUT</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Qty badge */}
-                    {inCart && (
+                    {inCart && !outOfStock && (
                       <div
                         className="absolute flex items-center justify-center rounded-full text-white font-bold shadow-lg"
                         style={{
@@ -842,57 +1220,91 @@ export function FoodCatalog({
                       {lines.map(line => (
                         <div
                           key={line.lineId}
-                          className="flex items-start gap-2 py-1.5 px-1 rounded-lg group hover:bg-gray-50 transition-colors cursor-pointer"
+                          className="flex flex-col gap-1 py-1.5 px-1 rounded-lg group hover:bg-gray-50 transition-colors cursor-pointer"
                           onClick={() => openModal(line.item, line)}
                           title="Click to edit this item"
                         >
-                          {/* Qty stepper */}
-                          <div className="flex items-center shrink-0">
-                            <button
-                              onClick={e => { e.stopPropagation(); decrementLine(line.lineId); }}
-                              className="w-5 h-5 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
-                              style={{ fontSize: 14, lineHeight: 1 }}
-                            >−</button>
-                            <div
-                              className="w-7 h-7 rounded-lg flex items-center justify-center font-bold mx-0.5"
-                              style={{ backgroundColor: "#8b5cf6", color: "#fff", fontSize: 12 }}
-                            >
-                              {line.qty}
+                          {/* Main line */}
+                          <div className="flex items-start gap-2">
+                            {/* Qty stepper */}
+                            <div className="flex items-center shrink-0">
+                              <button
+                                onClick={e => { e.stopPropagation(); decrementLine(line.lineId); }}
+                                className="w-5 h-5 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
+                                style={{ fontSize: 14, lineHeight: 1 }}
+                              >−</button>
+                              <div
+                                className="w-7 h-7 rounded-lg flex items-center justify-center font-bold mx-0.5"
+                                style={{ backgroundColor: "#8b5cf6", color: "#fff", fontSize: 12 }}
+                              >
+                                {line.qty}
+                              </div>
+                              <button
+                                onClick={e => { e.stopPropagation(); incrementLine(line.lineId); }}
+                                className="w-5 h-5 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
+                                style={{ fontSize: 14, lineHeight: 1 }}
+                              >+</button>
                             </div>
+
+                            {/* Name + modifiers + note + price */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-gray-800 font-semibold truncate" style={{ fontSize: 12 }}>
+                                {line.item.name}
+                              </p>
+                              {line.modifiers?.map((mod, mi) => (
+                                <p key={mi} className="text-gray-400 truncate" style={{ fontSize: 10.5 }}>
+                                  · {mod}
+                                </p>
+                              ))}
+                              {line.note && (
+                                <p className="text-purple-400 italic truncate" style={{ fontSize: 10.5 }}>
+                                  💬 {line.note}
+                                </p>
+                              )}
+                              <p style={{ fontSize: 11, color: "#0d9488", fontWeight: 600 }}>
+                                {formatVND(line.item.price * line.qty)}
+                              </p>
+                            </div>
+
+                            {/* Delete */}
                             <button
-                              onClick={e => { e.stopPropagation(); incrementLine(line.lineId); }}
-                              className="w-5 h-5 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
-                              style={{ fontSize: 14, lineHeight: 1 }}
-                            >+</button>
+                              onClick={e => { e.stopPropagation(); removeCompletely(line.lineId); }}
+                              className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           </div>
 
-                          {/* Name + modifiers + note + price */}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-gray-800 font-semibold truncate" style={{ fontSize: 12 }}>
-                              {line.item.name}
-                            </p>
-                            {line.modifiers?.map((mod, mi) => (
-                              <p key={mi} className="text-gray-400 truncate" style={{ fontSize: 10.5 }}>
-                                · {mod}
-                              </p>
-                            ))}
-                            {line.note && (
-                              <p className="text-purple-400 italic truncate" style={{ fontSize: 10.5 }}>
-                                💬 {line.note}
-                              </p>
-                            )}
-                            <p style={{ fontSize: 11, color: "#0d9488", fontWeight: 600 }}>
-                              {formatVND(line.item.price * line.qty)}
-                            </p>
-                          </div>
-
-                          {/* Delete */}
-                          <button
-                            onClick={e => { e.stopPropagation(); removeCompletely(line.lineId); }}
-                            className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          {/* Nested Combo Items */}
+                          {line.item.type === "combo" && (
+                            <div className="ml-9 space-y-1 mt-1 border-l-2 border-gray-100 pl-2">
+                              {line.item.includedItems?.map((child, ci) => {
+                                const childSel = line.comboSelections?.find(s => s.itemId === child.item.id);
+                                return (
+                                  <div key={child.item.id + ci} className="flex flex-col">
+                                    <div className="flex items-start justify-between">
+                                      <p className="text-gray-600 font-medium" style={{ fontSize: 11 }}>
+                                        <span className="text-gray-400 mr-1">↪</span>
+                                        {child.fixedQuantity * line.qty} x {child.item.name}
+                                      </p>
+                                    </div>
+                                    {childSel?.modifiers?.map((mod, mi) => (
+                                      <p key={mi} className="text-gray-400 ml-4" style={{ fontSize: 10 }}>
+                                        • {mod}
+                                      </p>
+                                    ))}
+                                    {childSel?.note && (
+                                      <div className="flex items-center gap-1 mt-0.5 ml-4">
+                                        <span className="text-purple-400 italic" style={{ fontSize: 10 }}>
+                                          💬 {childSel.note}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -943,6 +1355,14 @@ export function FoodCatalog({
           </div>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-[100] flex items-center gap-2 animate-bounce">
+          <Check size={16} className="text-green-400" />
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{toast}</span>
+        </div>
+      )}
 
       {/* ═══ Food Detail Modal ════════════════════════════════════ */}
       {modal && (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router";
 import {
   Menu, BarChart2, List,
   LayoutGrid,
@@ -19,9 +20,11 @@ import { BookingDetailModal } from "./components/BookingDetailModal";
 import { BookingDrawer } from "./components/BookingDrawer";
 import { OrderDetailsPanel } from "./components/OrderDetailsPanel";
 import { updateBookingStatus, type Status } from "./data/bookings";
+import { DeliveryTrackingModal } from "./components/DeliveryTrackingModal";
 import { UserMenuDropdown } from "./components/UserMenuDropdown";
 import LogoPlaceholder from "../imports/LogoPlaceholder";
 import { SettingsPage, type SettingsView } from "./components/SettingsPage";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 type NavTab = "Bookings" | "CRM" | "Archive";
 
@@ -190,24 +193,28 @@ function GlobalHeader({ onNewBooking, onWalkIn }: GlobalHeaderProps) {
 }
 
 // ── Sub Nav (Bookings | CRM | Archive) ─────────────────────────
-interface SubNavProps {
-  activeTab: NavTab;
-  setActiveTab: (t: NavTab) => void;
-}
-function SubNav({ activeTab, setActiveTab }: SubNavProps) {
+function SubNav() {
   const { t } = useLang();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const path = location.pathname;
+
+  let activeTab = "Bookings";
+  if (path.startsWith("/crm")) activeTab = "CRM";
+  else if (path.startsWith("/archive")) activeTab = "Archive";
+
   return (
     <div className="flex items-center gap-6 px-6 border-b border-gray-100 bg-white shrink-0" style={{ height: 44 }}>
       {([
-        { id: "Bookings", label: t.nav.bookings },
-        { id: "CRM",      label: t.nav.crm      },
-        { id: "Archive",  label: t.nav.archive  },
-      ] as { id: NavTab; label: string }[]).map(item => {
+        { id: "Bookings", label: t.nav.bookings, path: "/reservation/bookings" },
+        { id: "CRM",      label: t.nav.crm,      path: "/crm" },
+        { id: "Archive",  label: t.nav.archive,  path: "/archive" },
+      ] as const).map(item => {
         const isActive = activeTab === item.id;
         return (
           <button
             key={item.id}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => navigate(item.path)}
             className="relative h-full transition-colors flex items-center"
             style={{
               fontSize: 13,
@@ -232,15 +239,18 @@ function SubNav({ activeTab, setActiveTab }: SubNavProps) {
 // ── Global POS Footer ───────────────────────────────────────────
 type PosTab = "Order" | "Reservation" | "Tables" | "Receipt" | "More";
 
-interface GlobalFooterProps {
-  onProfile: () => void;
-  onSettings: () => void;
-}
+function GlobalFooter() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const path = location.pathname;
 
-function GlobalFooter({ onProfile, onSettings }: GlobalFooterProps) {
-  const [activeFooterTab, setActiveFooterTab] = useState<PosTab>("Reservation");
+  let activeFooterTab: PosTab = "Reservation";
+  if (path.startsWith("/order")) activeFooterTab = "Order";
+  else if (path.startsWith("/reservation/table-plan")) activeFooterTab = "Tables";
+  else if (path.startsWith("/receipt")) activeFooterTab = "Receipt";
+  else if (path.startsWith("/settings")) activeFooterTab = "More";
+
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
@@ -258,12 +268,12 @@ function GlobalFooter({ onProfile, onSettings }: GlobalFooterProps) {
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
-  const FOOTER_TABS: { id: PosTab; icon: React.ElementType; label: string }[] = [
-    { id: "Order",       icon: ShoppingCart,   label: "Order"       },
-    { id: "Reservation", icon: BookOpen,       label: "Reservation" },
-    { id: "Tables",      icon: Table2,         label: "Tables"      },
-    { id: "Receipt",     icon: ReceiptText,    label: "Receipt"     },
-    { id: "More",        icon: Menu,           label: "More"        },
+  const FOOTER_TABS: { id: PosTab; icon: React.ElementType; label: string; route: string }[] = [
+    { id: "Order",       icon: ShoppingCart,   label: "Order",       route: "/order" },
+    { id: "Reservation", icon: BookOpen,       label: "Reservation", route: "/reservation/bookings" },
+    { id: "Tables",      icon: Table2,         label: "Tables",      route: "/reservation/table-plan" },
+    { id: "Receipt",     icon: ReceiptText,    label: "Receipt",     route: "/receipt" },
+    { id: "More",        icon: Menu,           label: "More",        route: "/settings" },
   ];
 
   return (
@@ -301,22 +311,13 @@ function GlobalFooter({ onProfile, onSettings }: GlobalFooterProps) {
       {/* ── Center: POS nav tabs ── */}
       <div className="flex items-center gap-1 flex-1 justify-center relative">
         {FOOTER_TABS.map(tab => {
-          const isMore = tab.id === "More";
-          // "More" doesn't become the active tab, it's just a trigger
-          const isActive = !isMore && activeFooterTab === tab.id;
-          const isMenuTriggerActive = isMore && menuOpen;
+          const isActive = activeFooterTab === tab.id;
           const Icon = tab.icon;
 
           return (
             <div key={tab.id} className="relative">
               <button
-                onClick={() => {
-                  if (isMore) {
-                    setMenuOpen(v => !v);
-                  } else {
-                    setActiveFooterTab(tab.id);
-                  }
-                }}
+                onClick={() => navigate(tab.route)}
                 className="flex items-center gap-1.5 rounded-lg transition-all duration-150 active:scale-95"
                 style={{
                   height: 36,
@@ -324,24 +325,14 @@ function GlobalFooter({ onProfile, onSettings }: GlobalFooterProps) {
                   paddingRight: 14,
                   fontSize: 12,
                   fontWeight: isActive ? 700 : 500,
-                  color: isActive ? "#10b981" : (isMenuTriggerActive ? "#1f2937" : "#6b7280"),
-                  backgroundColor: isActive ? "#ecfdf5" : (isMenuTriggerActive ? "#f3f4f6" : "transparent"),
+                  color: isActive ? "#10b981" : "#6b7280",
+                  backgroundColor: isActive ? "#ecfdf5" : "transparent",
                   border: isActive ? "1px solid #a7f3d0" : "1px solid transparent",
                 }}
               >
                 <Icon size={13} />
                 {tab.label}
               </button>
-              
-              {/* If this is the "More" tab, anchor the dropdown here */}
-              {isMore && menuOpen && (
-                <UserMenuDropdown
-                  onClose={() => setMenuOpen(false)}
-                  onProfile={() => { setMenuOpen(false); onProfile(); }}
-                  onSettings={() => { setMenuOpen(false); onSettings(); }}
-                  position="top"
-                />
-              )}
             </div>
           );
         })}
@@ -376,16 +367,22 @@ function GlobalFooter({ onProfile, onSettings }: GlobalFooterProps) {
 
 // ── View Controls (Show / Time toggles) ────────────────────────
 interface ViewControlsProps {
-  activeView: string; setActiveView: (v: string) => void;
   activeTime: string; setActiveTime: (t: string) => void;
 }
-function ViewControls({ activeView, setActiveView, activeTime, setActiveTime }: ViewControlsProps) {
+function ViewControls({ activeTime, setActiveTime }: ViewControlsProps) {
   const { t } = useLang();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const path = location.pathname;
+
+  let activeView = "Gantt";
+  if (path.endsWith("/list")) activeView = "List";
+  if (path.endsWith("/table-plan")) activeView = "Tableplan";
 
   const VIEW_BUTTONS = [
-    { id: "Gantt",     icon: BarChart2,  label: t.views.diagram   },
-    { id: "List",      icon: List,       label: t.views.list      },
-    { id: "Tableplan", icon: LayoutGrid, label: t.views.tablePlan },
+    { id: "Gantt",     icon: BarChart2,  label: t.views.diagram,   route: "/reservation/bookings" },
+    { id: "List",      icon: List,       label: t.views.list,      route: "/reservation/list"     },
+    { id: "Tableplan", icon: LayoutGrid, label: t.views.tablePlan, route: "/reservation/table-plan" },
   ];
 
   const TIME_BUTTONS = [
@@ -404,7 +401,7 @@ function ViewControls({ activeView, setActiveView, activeTime, setActiveTime }: 
             const isActive = activeView === v.id;
             const Icon = v.icon;
             return (
-              <button key={v.id} onClick={() => setActiveView(v.id)}
+              <button key={v.id} onClick={() => navigate(v.route)}
                 className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${i < VIEW_BUTTONS.length - 1 ? "border-r border-gray-200" : ""} ${isActive ? "bg-white text-emerald-600" : "text-gray-500 hover:bg-gray-50"}`}
                 style={{ fontSize: 11 }}>
                 <Icon size={12} className={isActive ? "text-emerald-600" : "text-gray-400"} />
@@ -437,8 +434,9 @@ function ViewControls({ activeView, setActiveView, activeTime, setActiveTime }: 
 // ── App Inner ───────────────────────────────────────────────────
 function AppInner() {
   const { t } = useLang();
-  const [activeTab,         setActiveTab]         = useState<NavTab>("Bookings");
-  const [activeView,        setActiveView]        = useState("Gantt");
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [activeTime,        setActiveTime]        = useState("All");
   const [drawerOpen,        setDrawerOpen]        = useState(false);
   const [selectedBooking,   setSelectedBooking]   = useState<{ id: number; tab?: string } | null>(null);
@@ -447,8 +445,7 @@ function AppInner() {
   const [bookingDrawerType, setBookingDrawerType] = useState<"walk-in" | "reservation">("reservation");
   const [bookingDrawerSlot, setBookingDrawerSlot] = useState<SlotInfo | undefined>(undefined);
   const [selectedDay,       setSelectedDay]       = useState(new Date().getDate());
-  const [settingsView,         setSettingsView]         = useState<SettingsView | null>(null);
-  const [forceRender,          setForceRender]          = useState(0);
+  const [forceRender,       setForceRender]       = useState(0);
   const [hideCancelledNoshow,  setHideCancelledNoshow]  = useState(false);
 
   function handleNewBooking() {
@@ -478,6 +475,8 @@ function AppInner() {
     setForceRender(v => v + 1);
   }
 
+  const isSettings = location.pathname.startsWith("/settings");
+
   return (
     <div
       className="flex flex-col bg-gray-50"
@@ -490,60 +489,77 @@ function AppInner() {
       />
 
       {/* ── Sub Navigation ── */}
-      {settingsView === null && (
-        <SubNav activeTab={activeTab} setActiveTab={setActiveTab} />
-      )}
+      {!isSettings && <SubNav />}
 
       {/* ── Main content (fills space between header/subnav & footer) ── */}
       <div className="flex flex-col flex-1 overflow-hidden min-h-0">
+        <Routes>
+          <Route path="/" element={<Navigate to="/reservation/bookings" replace />} />
+          
+          <Route path="/settings" element={
+            <SettingsPage initialView="settings" onBack={() => navigate(-1)} />
+          } />
 
-        {/* Settings / Profile overlay */}
-        {settingsView !== null && (
-          <SettingsPage initialView={settingsView} onBack={() => setSettingsView(null)} />
-        )}
+          <Route path="/crm" element={<CRMView />} />
 
-        {settingsView === null && activeTab === "CRM" && <CRMView />}
-
-        {settingsView === null && activeTab === "Archive" && (
-          <div className="flex-1 flex items-center justify-center text-gray-400 bg-gray-50 flex-col gap-3">
-            <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
-              <Calendar size={28} className="text-gray-300" />
+          <Route path="/archive" element={
+            <div className="flex-1 flex items-center justify-center text-gray-400 bg-gray-50 flex-col gap-3">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+                <Calendar size={28} className="text-gray-300" />
+              </div>
+              <p style={{ fontSize: 15 }}>{t.archive.title}</p>
+              <p className="text-gray-400" style={{ fontSize: 12 }}>{t.archive.subtitle}</p>
             </div>
-            <p style={{ fontSize: 15 }}>{t.archive.title}</p>
-            <p className="text-gray-400" style={{ fontSize: 12 }}>{t.archive.subtitle}</p>
-          </div>
-        )}
+          } />
 
-        {settingsView === null && activeTab === "Bookings" && (
-          <div className="flex flex-1 overflow-hidden min-h-0 bg-white">
-            <LeftSidebar
-              onOpenSettings={() => setDrawerOpen(true)}
-              onBookingClick={handleBookingClick}
-              onIconClick={handleIconClick}
-              selectedDay={selectedDay}
-              onDaySelect={setSelectedDay}
-            />
-            <main className="flex flex-col flex-1 overflow-hidden min-h-0 min-w-0 bg-white">
-              {/* ViewControls sit directly at the top — sub-header removed */}
-              <ViewControls
-                activeView={activeView}
-                setActiveView={setActiveView}
-                activeTime={activeTime}
-                setActiveTime={setActiveTime}
+          <Route path="/order" element={
+            <div className="flex-1 flex items-center justify-center text-gray-400 bg-white">
+               <p>POS / Cart Flow Placeholder</p>
+            </div>
+          } />
+
+          <Route path="/receipt" element={
+            <div className="flex-1 flex items-center justify-center text-gray-400 bg-white">
+               <p>Receipt View Placeholder</p>
+            </div>
+          } />
+
+          <Route path="/reservation/*" element={
+            <div className="flex flex-1 overflow-hidden min-h-0 bg-white">
+              <LeftSidebar
+                onOpenSettings={() => setDrawerOpen(true)}
+                onBookingClick={handleBookingClick}
+                onIconClick={handleIconClick}
+                selectedDay={selectedDay}
+                onDaySelect={setSelectedDay}
               />
-              {activeView === "Gantt"     && <Timeline   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} hideCancelledNoshow={hideCancelledNoshow} onHideCancelledNoshowChange={setHideCancelledNoshow} />}
-              {activeView === "List"      && <ListView   period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onUpdateStatus={handleUpdateStatus} forceRender={forceRender} />}
-              {activeView === "Tableplan" && <Tableplan  period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} hideCancelledNoshow={hideCancelledNoshow} onOpenTableConfig={() => setDrawerOpen(true)} onWalkinRequest={(tables, time) => { if (!tables.length) return; setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: tables[0].section as any, table: tables[0].table, additionalTables: tables.length > 1 ? tables.slice(1).map(t => ({ section: t.section as any, table: t.table })) : undefined, timeSlot: time }); setBookingDrawerOpen(true); }} />}
-            </main>
-          </div>
-        )}
+              <ErrorBoundary>
+                <main className="flex flex-col flex-1 overflow-hidden min-h-0 min-w-0 bg-white">
+                  {/* ViewControls sit directly at the top — sub-header removed */}
+                  <ViewControls
+                    activeTime={activeTime}
+                    setActiveTime={setActiveTime}
+                  />
+                  <Routes>
+                    <Route path="bookings" element={
+                      <Timeline period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onSlotNewBooking={handleSlotNewBooking} onSlotWalkIn={handleSlotWalkIn} forceRender={forceRender} hideCancelledNoshow={hideCancelledNoshow} onHideCancelledNoshowChange={setHideCancelledNoshow} />
+                    } />
+                    <Route path="list" element={
+                      <ListView period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} onUpdateStatus={handleUpdateStatus} forceRender={forceRender} />
+                    } />
+                    <Route path="table-plan" element={
+                      <Tableplan period={activeTime} day={selectedDay} onBookingClick={handleBookingClick} forceRender={forceRender} hideCancelledNoshow={hideCancelledNoshow} onOpenTableConfig={() => setDrawerOpen(true)} onWalkinRequest={(tables, time) => { if (!tables.length) return; setBookingDrawerType("walk-in"); setBookingDrawerSlot({ section: tables[0].section as any, table: tables[0].table, additionalTables: tables.length > 1 ? tables.slice(1).map(t => ({ section: t.section as any, table: t.table })) : undefined, timeSlot: time }); setBookingDrawerOpen(true); }} />
+                    } />
+                  </Routes>
+                </main>
+              </ErrorBoundary>
+            </div>
+          } />
+        </Routes>
       </div>
 
       {/* ── Global POS Footer ── */}
-      <GlobalFooter
-        onProfile={() => setSettingsView("profile")}
-        onSettings={() => setSettingsView("settings")}
-      />
+      <GlobalFooter />
 
       {/* ── Global overlays / drawers / modals ── */}
       <BookingSettingsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
@@ -552,7 +568,7 @@ function AppInner() {
         bookingId={selectedBooking?.id ?? null}
         initialTab={(selectedBooking?.tab ?? "overview") as any}
         onClose={() => setSelectedBooking(null)}
-        onOpenCRM={() => { setSelectedBooking(null); setActiveTab("CRM"); }}
+        onOpenCRM={() => { setSelectedBooking(null); navigate("/crm"); }}
         onStatusChange={handleUpdateStatus}
       />
       <OrderDetailsPanel
@@ -576,8 +592,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <AppInner />
-    </LanguageProvider>
+    <BrowserRouter>
+      <LanguageProvider>
+        <AppInner />
+      </LanguageProvider>
+    </BrowserRouter>
   );
 }

@@ -32,6 +32,7 @@ export interface FoodCategory {
 }
 
 export interface FoodItem {
+  type?: "food";
   id: string;
   categoryId: string;
   name: string;
@@ -41,15 +42,51 @@ export interface FoodItem {
   description?: string;
   soldCount?: number;       // mock sold counter
   additions?: AdditionGroup[];
+  outOfStock?: boolean;
+}
+
+export interface ComboIncludedItem {
+  item: FoodItem;
+  fixedQuantity: number;
+}
+
+export interface ComboItem {
+  type: "combo";
+  id: string;
+  categoryId: string;
+  name: string;
+  price: number;
+  kitchen: KitchenZone;
+  emoji: string;
+  image?: string;
+  description?: string;
+  soldCount?: number;
+  includedItems: ComboIncludedItem[];
+  outOfStock?: boolean;
+}
+
+export type AnyItem = FoodItem | ComboItem;
+
+export function isComboOutOfStock(combo: ComboItem): boolean {
+  if (combo.outOfStock) return true;
+  return combo.includedItems.some(i => i.item.outOfStock === true);
+}
+
+export interface NestedComboSelection {
+  itemId: string;
+  selectedAdditions?: SelectedAddition[];
+  modifiers?: string[];
+  note?: string;
 }
 
 export interface CartLine {
   lineId: string;                       // unique per line
-  item: FoodItem;
+  item: AnyItem;
   qty: number;
   note?: string;
   modifiers?: string[];                 // display labels derived from selectedAdditions
   selectedAdditions?: SelectedAddition[];
+  comboSelections?: NestedComboSelection[];
 }
 
 export interface OrderBatch {
@@ -62,6 +99,7 @@ export interface OrderBatch {
 
 // ── Categories ─────────────────────────────────────────────────
 export const FOOD_CATEGORIES: FoodCategory[] = [
+  { id: "combos",     name: "Combos & Sets",    emoji: "🍱", gradient: ["#fff1f2", "#ffe4e6"] },
   { id: "snacks",     name: "Savory Snacks",    emoji: "🥨", gradient: ["#fff7ed", "#fed7aa"] },
   { id: "mains",      name: "Main Course",      emoji: "🍽️", gradient: ["#f0fdf4", "#bbf7d0"] },
   { id: "appetizers", name: "Appetizers",       emoji: "🥗", gradient: ["#faf5ff", "#e9d5ff"] },
@@ -70,7 +108,136 @@ export const FOOD_CATEGORIES: FoodCategory[] = [
 ];
 
 // ── Items ──────────────────────────────────────────────────────
-export const FOOD_ITEMS: FoodItem[] = [
+export const FOOD_ITEMS: AnyItem[] = [
+  // ── Combos ──
+  {
+    type: "combo",
+    id: "c1",
+    categoryId: "combos",
+    name: "Steak Couple Set",
+    price: 650000,
+    kitchen: "Bếp Tổng",
+    emoji: "🥩🍷",
+    description: "Enjoy our premium sirloin steaks and refreshing beverages for two. (Save 20%)",
+    soldCount: 15,
+    includedItems: [
+      {
+        fixedQuantity: 2,
+        item: {
+          id: "m1", categoryId: "mains", name: "Bò bít tết sốt nấm", price: 295000, kitchen: "Bếp Tổng", emoji: "🥩",
+          description: "Pan-seared prime beef tenderloin served with rich mushroom sauce, seasonal vegetables and your choice of steak doneness.",
+          additions: [
+            {
+              id: "doneness", name: "Độ chín (Doneness)", type: "radio", required: true,
+              options: [
+                { id: "rare",       label: "🔴 Rare – Tái" },
+                { id: "medium_r",   label: "🟠 Medium Rare" },
+                { id: "medium",     label: "🟡 Medium" },
+                { id: "well",       label: "🟢 Well Done" },
+              ],
+            },
+          ]
+        }
+      },
+      {
+        fixedQuantity: 2,
+        item: { id: "b5", categoryId: "beverages", name: "Soda (ly)", price: 50000, kitchen: "Bar", emoji: "🥤" }
+      }
+    ],
+  },
+  {
+    type: "combo",
+    id: "c2",
+    categoryId: "combos",
+    name: "Lunch Express",
+    price: 150000,
+    kitchen: "Bếp Tổng",
+    emoji: "🍚🧊",
+    description: "Quick and satisfying fried rice paired with a refreshing iced tea.",
+    soldCount: 42,
+    includedItems: [
+      {
+        fixedQuantity: 1,
+        item: {
+          id: "m4", categoryId: "mains", name: "Cơm chiên hải sản", price: 125000, kitchen: "Bếp Tổng", emoji: "🍚",
+          description: "Mixed seafood fried rice."
+        }
+      },
+      {
+        fixedQuantity: 1,
+        item: {
+          id: "b1", categoryId: "beverages", name: "Trà đá", price: 35000, kitchen: "Bar", emoji: "🧊",
+          description: "Refreshing iced tea."
+        }
+      }
+    ],
+  },
+  {
+    type: "combo",
+    id: "c3",
+    categoryId: "combos",
+    name: "Family Feast",
+    price: 650000,
+    kitchen: "Bếp Tổng",
+    emoji: "🍲",
+    description: "A complete family feast with hotpot, beef, mixed seafood, and drinks.",
+    soldCount: 8,
+    includedItems: [
+      {
+        fixedQuantity: 1,
+        item: {
+          id: "m7", categoryId: "mains", name: "Lẩu Thái", price: 250000, kitchen: "Bếp Tổng", emoji: "🍲",
+          additions: [
+            {
+              id: "broth", name: "Nước lẩu (Broth)", type: "radio", required: true,
+              options: [
+                { id: "spicy", label: "Cay (Spicy)" },
+                { id: "non_spicy", label: "Không cay (Non-spicy)" },
+              ]
+            }
+          ]
+        }
+      },
+      {
+        fixedQuantity: 1,
+        item: {
+          id: "m8", categoryId: "mains", name: "Bò Mỹ (200g)", price: 150000, kitchen: "Bếp Tổng", emoji: "🥩",
+          additions: [
+            {
+              id: "marinade", name: "Sốt ướp (Marinade)", type: "radio", required: false,
+              options: [
+                { id: "bbq", label: "Sốt BBQ" },
+                { id: "garlic", label: "Sốt tỏi" },
+              ]
+            }
+          ]
+        }
+      },
+      {
+        fixedQuantity: 1,
+        item: {
+          id: "m9", categoryId: "mains", name: "Hải sản tổng hợp", price: 180000, kitchen: "Bếp Tổng", emoji: "🦞",
+          additions: [
+            {
+              id: "sauce", name: "Nước chấm thêm", type: "checkbox", required: false,
+              options: [
+                { id: "green_chili", label: "Muối ớt xanh", price: 5000 },
+                { id: "sweet_chili", label: "Tương chua ngọt", price: 5000 }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        fixedQuantity: 1,
+        item: { id: "b7", categoryId: "beverages", name: "Coca Cola", price: 25000, kitchen: "Bar", emoji: "🥤" }
+      },
+      {
+        fixedQuantity: 1,
+        item: { id: "d6", categoryId: "desserts", name: "Trái cây dĩa", price: 80000, kitchen: "Bếp trên", emoji: "🍉" }
+      }
+    ],
+  },
   // ── Savory Snacks ── Bếp Tổng
   { id: "s1", categoryId: "snacks", name: "Xúc xích chiên giòn",       price: 85000,  kitchen: "Bếp Tổng", emoji: "🌭", description: "Crispy fried sausage with dipping sauce" },
   { id: "s2", categoryId: "snacks", name: "Khoai tây chiên phô mai",    price: 65000,  kitchen: "Bếp Tổng", emoji: "🍟", description: "Cheese seasoned fries" },
